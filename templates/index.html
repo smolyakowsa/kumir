@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Кумир симулятор</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            min-height: 100vh;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            background: #f0f2f5;
+        }
+
+        /* Левая колонка */
+        .code-container {
+            flex: 1;
+            max-width: 40%;
+            padding-right: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Правая колонка */
+        .field-container {
+            flex: 1;
+            max-width: 60%;
+            padding-left: 20px;
+        }
+
+        #code {
+            flex: 1;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 14px;
+            border: 2px solid #007bff;
+            border-radius: 5px;
+            resize: none;
+            margin-bottom: 20px;
+            background: white;
+        }
+
+        #run-button {
+            padding: 15px 40px;
+            font-size: 18px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            align-self: flex-start;
+        }
+
+        /* Стили для игрового поля */
+        #field {
+            position: relative;
+            width: 420px;
+            height: 420px;
+            border: 1px solid #000;
+            background: white;
+        }
+
+        .cell {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #ddd;
+            position: absolute;
+            background: white;
+        }
+
+        .obstacle { background: #666; }
+        .robot { background: #f00; }
+        .start { background: #0f0; }
+
+        .wall {
+            position: absolute;
+            background: #000;
+            z-index: 1;
+        }
+
+        .wall.horizontal {
+            width: 42px;
+            height: 4px;
+            margin-top: -2px;
+        }
+
+        .wall.vertical {
+            width: 4px;
+            height: 42px;
+            margin-left: -2px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Левая колонка - редактор кода -->
+    <div class="code-container">
+        <textarea id="code">алг Движение
+нач
+  вправо
+  вправо
+  вверх
+кон</textarea>
+        <button id="run-button" onclick="runCode()">Запустить программу</button>
+    </div>
+
+    <!-- Правая колонка - игровое поле -->
+    <div class="field-container">
+        <div id="field"></div>
+    </div>
+
+    <script>
+        let fieldState = {
+            obstacles: new Set(),
+            walls: new Set(),
+            start: [0, 0],
+            robot: [0, 0]
+        };
+
+        // Создание поля
+        function createField() {
+            const field = document.getElementById('field');
+            field.innerHTML = '';
+            field.style.width = `${10 * 42}px`;
+            field.style.height = `${10 * 42}px`;
+
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 10; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    cell.style.left = `${x * 42}px`;
+                    cell.style.top = `${y * 42}px`;
+
+                    if (x === fieldState.start[0] && y === fieldState.start[1]) {
+                        cell.classList.add('start');
+                    }
+
+                    // Обработка кликов на клетки
+                    cell.addEventListener('click', function(e) {
+                        if (e.shiftKey) {
+                            const pos = `${x},${y}`;
+                            if (fieldState.obstacles.has(pos)) {
+                                fieldState.obstacles.delete(pos);
+                                cell.classList.remove('obstacle');
+                            } else {
+                                fieldState.obstacles.add(pos);
+                                cell.classList.add('obstacle');
+                            }
+                        }
+                    });
+
+                    field.appendChild(cell);
+
+                    // Добавляем области для создания стен
+                    if (x < 9) {
+                        const wallRight = document.createElement('div');
+                        wallRight.className = 'wall vertical';
+                        wallRight.style.left = `${(x + 1) * 42 - 2}px`;
+                        wallRight.style.top = `${y * 42}px`;
+                        wallRight.addEventListener('click', function() {
+                            toggleWall(x, y, x + 1, y);
+                        });
+                        field.appendChild(wallRight);
+                    }
+
+                    if (y < 9) {
+                        const wallBottom = document.createElement('div');
+                        wallBottom.className = 'wall horizontal';
+                        wallBottom.style.left = `${x * 42}px`;
+                        wallBottom.style.top = `${(y + 1) * 42 - 2}px`;
+                        wallBottom.addEventListener('click', function() {
+                            toggleWall(x, y, x, y + 1);
+                        });
+                        field.appendChild(wallBottom);
+                    }
+                }
+            }
+        }
+
+        // Переключение стен
+        function toggleWall(x1, y1, x2, y2) {
+            const wallKey = `${x1},${y1},${x2},${y2}`;
+            const reverseKey = `${x2},${y2},${x1},${y1}`;
+
+            if (fieldState.walls.has(wallKey) || fieldState.walls.has(reverseKey)) {
+                fieldState.walls.delete(wallKey);
+                fieldState.walls.delete(reverseKey);
+            } else {
+                fieldState.walls.add(wallKey);
+            }
+
+            updateWalls();
+        }
+
+        // Обновление отображения стен
+        function updateWalls() {
+            document.querySelectorAll('.wall').forEach(wall => {
+                const x1 = parseInt(wall.style.left) / 42;
+                const y1 = parseInt(wall.style.top) / 42;
+                const x2 = x1 + (wall.classList.contains('vertical') ? 1 : 0);
+                const y2 = y1 + (wall.classList.contains('horizontal') ? 1 : 0);
+
+                const wallKey = `${x1},${y1},${x2},${y2}`;
+                const reverseKey = `${x2},${y2},${x1},${y1}`;
+
+                if (fieldState.walls.has(wallKey) || fieldState.walls.has(reverseKey)) {
+                    wall.style.backgroundColor = '#000';
+                } else {
+                    wall.style.backgroundColor = 'transparent';
+                }
+            });
+        }
+
+        // Запуск кода
+        async function runCode() {
+            try {
+                const code = document.getElementById('code').value;
+                console.log("Запуск кода:", code);
+
+                // Фиктивный ответ для тестирования
+                const mockResponse = {
+                    path: [[1, 0], [2, 0], [2, 1]],
+                    final_position: [2, 1],
+                    obstacles: [],
+                    walls: []
+                };
+
+                // Визуализация мокового ответа
+                visualize(mockResponse);
+
+                // Если сервер готов, используйте этот код:
+                /*
+                const response = await fetch('/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        code,
+                        walls: Array.from(fieldState.walls).map(w => w.split(',').map(Number)),
+                        obstacles: Array.from(fieldState.obstacles).map(o => o.split(',').map(Number)),
+                        start: fieldState.start
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Ошибка сервера: ${response.status}`);
+                }
+
+                const result = await response.json();
+                visualize(result);
+                */
+
+            } catch (error) {
+                console.error("Ошибка при выполнении кода:", error);
+                alert("Произошла ошибка при выполнении кода. Проверьте консоль для подробностей.");
+            }
+        }
+
+        // Визуализация результата
+        function visualize(result) {
+            console.log("Результат выполнения:", result);
+
+            // Очищаем предыдущее положение робота
+            document.querySelectorAll('.robot').forEach(cell => cell.classList.remove('robot'));
+
+            // Отображаем путь робота
+            result.path.forEach(([x, y], index) => {
+                setTimeout(() => {
+                    const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                    if (cell) {
+                        cell.classList.add('robot');
+                    }
+                }, index * 500); // Задержка для анимации
+            });
+
+            // Отображаем финальное положение робота
+            const [finalX, finalY] = result.final_position;
+            const finalCell = document.querySelector(`.cell[data-x="${finalX}"][data-y="${finalY}"]`);
+            if (finalCell) {
+                finalCell.classList.add('robot');
+            }
+        }
+
+        // Инициализация поля при загрузке страницы
+        window.addEventListener('load', function() {
+            createField();
+            updateWalls();
+        });
+    </script>
+</body>
+</html>
