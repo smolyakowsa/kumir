@@ -57,7 +57,7 @@
             position: relative;
             width: 420px;
             height: 420px;
-            border: 1px solid #000;
+            border: 2px solid #000;
             background: white;
         }
 
@@ -72,6 +72,7 @@
         .obstacle { background: #666; }
         .robot { background: #f00; }
         .start { background: #0f0; }
+        .painted { background: #ff0; }
 
         .wall {
             position: absolute;
@@ -90,6 +91,8 @@
             height: 42px;
             margin-left: -2px;
         }
+
+        .error { border: 2px solid #ff0000; }
     </style>
 </head>
 <body>
@@ -100,6 +103,7 @@
   вправо
   вправо
   вверх
+  закрасить
 кон</textarea>
         <button id="run-button" onclick="runCode()">Запустить программу</button>
     </div>
@@ -110,22 +114,29 @@
     </div>
 
     <script>
-        let fieldState = {
+        // Состояние поля
+        const fieldState = {
+            width: 10,
+            height: 10,
             obstacles: new Set(),
             walls: new Set(),
             start: [0, 0],
-            robot: [0, 0]
+            robot_position: [0, 0]
         };
 
         // Создание поля
         function createField() {
             const field = document.getElementById('field');
+            if (!field) {
+                console.error('Элемент field не найден!');
+                return;
+            }
             field.innerHTML = '';
-            field.style.width = `${10 * 42}px`;
-            field.style.height = `${10 * 42}px`;
+            field.style.width = `${fieldState.width * 42}px`;
+            field.style.height = `${fieldState.height * 42}px`;
 
-            for (let y = 0; y < 10; y++) {
-                for (let x = 0; x < 10; x++) {
+            for (let y = 0; y < fieldState.height; y++) {
+                for (let x = 0; x < fieldState.width; x++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
                     cell.dataset.x = x;
@@ -154,7 +165,7 @@
                     field.appendChild(cell);
 
                     // Добавляем области для создания стен
-                    if (x < 9) {
+                    if (x < fieldState.width - 1) {
                         const wallRight = document.createElement('div');
                         wallRight.className = 'wall vertical';
                         wallRight.style.left = `${(x + 1) * 42 - 2}px`;
@@ -165,7 +176,7 @@
                         field.appendChild(wallRight);
                     }
 
-                    if (y < 9) {
+                    if (y < fieldState.height - 1) {
                         const wallBottom = document.createElement('div');
                         wallBottom.className = 'wall horizontal';
                         wallBottom.style.left = `${x * 42}px`;
@@ -213,73 +224,68 @@
             });
         }
 
-        // Запуск кода
-        async function runCode() {
-            try {
-                const code = document.getElementById('code').value;
-                console.log("Запуск кода:", code);
+        // Функция для выполнения кода
+        function runCode() {
+            const code = document.getElementById('code').value;
+            const commands = code.split('\n').map(line => line.trim().toLowerCase());
 
-                // Фиктивный ответ для тестирования
-                const mockResponse = {
-                    path: [[1, 0], [2, 0], [2, 1]],
-                    final_position: [2, 1],
-                    obstacles: [],
-                    walls: []
+            // Сброс робота в начальное положение
+            fieldState.robot_position = [...fieldState.start];
+            document.querySelectorAll('.robot').forEach(cell => cell.classList.remove('robot'));
+            document.querySelectorAll('.painted').forEach(cell => cell.classList.remove('painted'));
+
+            // Выполнение команд
+            let index = 0;
+            const executeNextCommand = () => {
+                if (index >= commands.length) return;
+
+                const command = commands[index];
+                console.log(`Выполнение команды: ${command}`);
+
+                const [x, y] = fieldState.robot_position;
+                const dirs = {
+                    'вверх': [0, -1],
+                    'вниз': [0, 1],
+                    'влево': [-1, 0],
+                    'вправо': [1, 0]
                 };
 
-                // Визуализация мокового ответа
-                visualize(mockResponse);
+                if (dirs[command]) {
+                    const [dx, dy] = dirs[command];
+                    const newX = x + dx;
+                    const newY = y + dy;
 
-                // Если сервер готов, используйте этот код:
-                /*
-                const response = await fetch('/run', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        code,
-                        walls: Array.from(fieldState.walls).map(w => w.split(',').map(Number)),
-                        obstacles: Array.from(fieldState.obstacles).map(o => o.split(',').map(Number)),
-                        start: fieldState.start
-                    })
-                });
+                    // Проверка на столкновение со стеной
+                    const wallKey1 = `${x},${y},${newX},${newY}`;
+                    const wallKey2 = `${newX},${newY},${x},${y}`;
+                    if (fieldState.walls.has(wallKey1) || fieldState.walls.has(wallKey2)) {
+                        alert(`Робот разрушился при выполнении команды: ${command}`);
+                        return;
+                    }
 
-                if (!response.ok) {
-                    throw new Error(`Ошибка сервера: ${response.status}`);
-                }
+                    // Проверка на выход за границы поля
+                    if (newX < 0 || newX >= fieldState.width || newY < 0 || newY >= fieldState.height) {
+                        alert(`Робот вышел за границы поля при выполнении команды: ${command}`);
+                        return;
+                    }
 
-                const result = await response.json();
-                visualize(result);
-                */
-
-            } catch (error) {
-                console.error("Ошибка при выполнении кода:", error);
-                alert("Произошла ошибка при выполнении кода. Проверьте консоль для подробностей.");
-            }
-        }
-
-        // Визуализация результата
-        function visualize(result) {
-            console.log("Результат выполнения:", result);
-
-            // Очищаем предыдущее положение робота
-            document.querySelectorAll('.robot').forEach(cell => cell.classList.remove('robot'));
-
-            // Отображаем путь робота
-            result.path.forEach(([x, y], index) => {
-                setTimeout(() => {
-                    const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                    // Перемещение робота
+                    fieldState.robot_position = [newX, newY];
+                    const cell = document.querySelector(`.cell[data-x="${newX}"][data-y="${newY}"]`);
                     if (cell) {
+                        document.querySelectorAll('.robot').forEach(c => c.classList.remove('robot'));
                         cell.classList.add('robot');
                     }
-                }, index * 500); // Задержка для анимации
-            });
+                } else if (command === 'закрасить') {
+                    const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                    if (cell) cell.classList.add('painted');
+                }
 
-            // Отображаем финальное положение робота
-            const [finalX, finalY] = result.final_position;
-            const finalCell = document.querySelector(`.cell[data-x="${finalX}"][data-y="${finalY}"]`);
-            if (finalCell) {
-                finalCell.classList.add('robot');
-            }
+                index++;
+                setTimeout(executeNextCommand, 500); // Задержка для анимации
+            };
+
+            executeNextCommand();
         }
 
         // Инициализация поля при загрузке страницы
