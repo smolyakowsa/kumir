@@ -1,25 +1,116 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Кумир симулятор</title>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI&family=Fira+Code&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <style>
-        body { margin: 0; display: flex; height: 100vh; }
-        .code-container, .field-container { padding: 20px; }
-        .code-container { width: 40%; background: #f0f0f0; }
-        #code { width: 100%; height: 90%; font-family: monospace; }
-        #field { position: relative; background: #fff; }
-        .cell {
-            position: absolute; width: 40px; height: 40px;
-            border: 1px solid #ddd; box-sizing: border-box;
+        :root {
+            --bg: #f5f7fa;
+            --text: #333;
+            --container-bg: rgba(255, 255, 255, 0.9);
+            --border: #ddd;
+            --button-bg: #007bff;
         }
-        .robot { background-color: #ff4444 !important; }
-        .painted { background-color: #aaffaa; }
-        .wall { position: absolute; background-color: #000; }
-        .vertical { width: 4px; height: 40px; }
-        .horizontal { width: 40px; height: 4px; }
+
+        .dark-theme {
+            --bg: linear-gradient(135deg, #2c3e50, #34495e);
+            --text: #fff;
+            --container-bg: rgba(0, 0, 0, 0.7);
+            --border: #444;
+            --button-bg: #555;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        .code-container, .field-container {
+            background: var(--container-bg);
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+            padding: 25px;
+            margin: 10px;
+            width: 40%;
+            backdrop-filter: blur(10px);
+        }
+
+        #code {
+            width: 100%;
+            height: 300px;
+            font-family: 'Fira Code', monospace;
+            background: var(--container-bg);
+            border: 2px solid var(--border);
+            color: var(--text);
+            border-radius: 10px;
+            padding: 15px;
+            resize: none;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            padding: 12px;
+            background: var(--button-bg);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: filter 0.2s;
+        }
+
+        button:hover { filter: brightness(1.2); }
+
+        #field {
+            position: relative;
+            background: var(--container-bg);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            aspect-ratio: 1;
+        }
+
+        .cell {
+            position: absolute;
+            width: 10%;
+            height: 10%;
+            border: 1px solid var(--border);
+        }
+
+        .robot { background: #ff4444 !important; }
+        .painted { background: #aaffaa !important; }
+        .obstacle { background: #666 !important; }
+
+        .theme-switcher {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+        }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            .code-container, .field-container { width: 90%; }
+        }
     </style>
 </head>
 <body>
+    <div class="theme-switcher">
+        <button onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
+    </div>
+
     <div class="code-container">
         <textarea id="code">алг Движение
 нач
@@ -32,9 +123,9 @@
   все
 кон</textarea>
         <div class="controls">
-            <button onclick="ExecutionControl.start()">Старт</button>
-            <button onclick="ExecutionControl.pause()">Пауза</button>
-            <button onclick="ExecutionControl.reset()">Сброс</button>
+            <button onclick="ExecutionControl.start()"><i class="fas fa-play"></i> Старт</button>
+            <button onclick="ExecutionControl.pause()"><i class="fas fa-pause"></i> Пауза</button>
+            <button onclick="ExecutionControl.reset()"><i class="fas fa-undo"></i> Сброс</button>
         </div>
     </div>
 
@@ -43,348 +134,165 @@
     </div>
 
 <script>
-class ExecutionError extends Error {
-    constructor(message, line) {
-        super(`[Ошибка] Строка ${line}: ${message}`);
-        this.name = "ExecutionError";
-    }
-}
+class ExecutionError extends Error {}
+let isRunning = false;
+let delay = 500;
+let timeoutId;
 
-const FieldState = new Proxy({
-    width: 10,
-    height: 10,
-    robot: { x: 0, y: 0 },
-    walls: new Set(),
-    obstacles: new Set(),
-    painted: new Set()
-}, {
-    set(target, prop, value) {
-        if (prop === 'robot') {
-            UpdateManager.updateRobotPosition(value);
-        }
-        return Reflect.set(...arguments);
-    }
-});
-
-const UpdateManager = {
-    updateRobotPosition(pos) {
-        document.querySelectorAll('.robot').forEach(c => c.classList.remove('robot'));
-        const cell = document.querySelector(`.cell[data-x="${pos.x}"][data-y="${pos.y}"]`);
-        cell?.classList.add('robot');
-    },
-
-    updatePaintedCells() {
-        document.querySelectorAll('.cell').forEach(cell => {
-            const key = `${cell.dataset.x},${cell.dataset.y}`;
-            cell.classList.toggle('painted', FieldState.painted.has(key));
-        });
-    }
+const Robot = {
+    x: 0,
+    y: 0,
+    dir: 0,
+    painting: false
 };
 
-const FieldBuilder = {
-    init() {
-        this.createField();
-        this.addEventListeners();
-    },
+const Field = {
+    size: 10,
+    obstacles: new Set(),
+    walls: new Set(),
 
-    createField() {
-        const fragment = document.createDocumentFragment();
-        for (let y = 0; y < FieldState.height; y++) {
-            for (let x = 0; x < FieldState.width; x++) {
-                const cell = this.createCell(x, y);
-                fragment.appendChild(cell);
-                this.addWalls(fragment, x, y);
+    init() {
+        const field = document.getElementById('field');
+        field.innerHTML = '';
+        field.style.width = `${field.offsetWidth}px`;
+
+        for(let y = 0; y < this.size; y++) {
+            for(let x = 0; x < this.size; x++) {
+                const cell = document.createElement('div');
+                cell.className = 'cell';
+                cell.style.left = `${x * 10}%`;
+                cell.style.top = `${y * 10}%`;
+                if(x === 0 && y === 0) cell.classList.add('robot');
+                field.appendChild(cell);
             }
         }
-        document.getElementById('field').appendChild(fragment);
-    },
 
-    createCell(x, y) {
-        const cell = document.createElement('div');
-        cell.className = 'cell';
-        cell.dataset.x = x;
-        cell.dataset.y = y;
-        cell.style.left = `${x * 42}px`;
-        cell.style.top = `${y * 42}px`;
-        cell.addEventListener('click', e => this.handleCellClick(x, y, e));
-        return cell;
-    },
-
-    addWalls(fragment, x, y) {
-        if (x < FieldState.width - 1) this.addWall(fragment, x, y, x+1, y, 'vertical');
-        if (y < FieldState.height - 1) this.addWall(fragment, x, y, x, y+1, 'horizontal');
-    },
-
-    addWall(fragment, x1, y1, x2, y2, type) {
-        const wall = document.createElement('div');
-        wall.className = `wall ${type}`;
-        wall.style.left = `${type === 'vertical' ? x2 * 42 - 2 : x1 * 42}px`;
-        wall.style.top = `${type === 'horizontal' ? y2 * 42 - 2 : y1 * 42}px`;
-        wall.addEventListener('click', () => this.toggleWall(x1, y1, x2, y2));
-        fragment.appendChild(wall);
-    },
-
-    handleCellClick(x, y, e) {
-        if (e.shiftKey) this.toggleObstacle(x, y);
-    },
-
-    toggleObstacle(x, y) {
-        const key = `${x},${y}`;
-        FieldState.obstacles.has(key)
-            ? FieldState.obstacles.delete(key)
-            : FieldState.obstacles.add(key);
-        document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`)
-            ?.classList.toggle('obstacle');
-    },
-
-    toggleWall(x1, y1, x2, y2) {
-        const key = `${x1},${y1},${x2},${y2}`;
-        const reverseKey = `${x2},${y2},${x1},${y1}`;
-        FieldState.walls.has(key) || FieldState.walls.has(reverseKey)
-            ? FieldState.walls.delete(key) || FieldState.walls.delete(reverseKey)
-            : FieldState.walls.add(key);
-        this.updateWalls();
-    },
-
-    updateWalls() {
-        document.querySelectorAll('.wall').forEach(wall => {
-            const coords = wall.style.left + wall.style.top;
-            const key = this.getWallKey(wall);
-            wall.style.backgroundColor =
-                FieldState.walls.has(key) ? '#000' : 'transparent';
-        });
-    },
-
-    getWallKey(wall) {
-        const x = parseInt(wall.style.left) / 42;
-        const y = parseInt(wall.style.top) / 42;
-        return wall.classList.contains('vertical')
-            ? `${Math.floor(x)},${y},${Math.ceil(x)},${y}`
-            : `${x},${Math.floor(y)},${x},${Math.ceil(y)}`;
-    }
-};
-
-const CodeProcessor = {
-    validate(code) {
-        const errors = [];
-        if (!code.includes('нач') || !code.includes('кон')) {
-            errors.push('Отсутствуют обязательные ключевые слова нач/кон');
+        // Добавляем стены по периметру
+        for(let i = 0; i < this.size; i++) {
+            this.walls.add(`${i},-1`);
+            this.walls.add(`${i},${this.size}`);
+            this.walls.add(`-1,${i}`);
+            this.walls.add(`${this.size},${i}`);
         }
-        return errors;
     },
 
-    sanitize(code) {
-        return code
-            .replace(/[^а-яё\s\n]/gi, '')
-            .split('\n')
-            .map(line => line.trim().toLowerCase())
-            .filter(line => line.length > 0);
+    checkObstacle(x, y) {
+        return this.obstacles.has(`${x},${y}`) || this.walls.has(`${x},${y}`);
     }
 };
 
 const ExecutionControl = {
-    isRunning: false,
-    currentPromise: null,
-
     async start() {
-        if (this.isRunning) return;
-        this.isRunning = true;
+        if(isRunning) return;
+        isRunning = true;
 
         try {
             const code = document.getElementById('code').value;
-            const commands = CodeProcessor.sanitize(code);
-            const errors = CodeProcessor.validate(code);
-
-            if (errors.length > 0) {
-                throw new ExecutionError(errors.join('\n'), 0);
-            }
-
+            const commands = this.parseCode(code);
             await this.executeCommands(commands);
-        } catch (e) {
-            console.error(e);
-            alert(e.message);
-        } finally {
-            this.reset();
+        } catch(e) {
+            alert(`Ошибка: ${e.message}`);
         }
-    },
-
-    async executeCommands(commands) {
-        let pc = 0;
-        const stack = [];
-
-        while (pc < commands.length && this.isRunning) {
-            const cmd = commands[pc];
-            try {
-                switch(true) {
-                    case cmd.startsWith('нц пока'):
-                        pc = await this.handleLoopStart(commands, pc, stack);
-                        break;
-                    case cmd === 'кц':
-                        pc = this.handleLoopEnd(commands, pc, stack);
-                        break;
-                    case cmd.startsWith('если'):
-                        pc = await this.handleConditionStart(commands, pc);
-                        break;
-                    case cmd === 'все':
-                        pc++;
-                        break;
-                    default:
-                        await this.executeCommand(cmd, pc);
-                        pc++;
-                }
-                await new Promise(resolve => setTimeout(resolve, 300));
-            } catch (e) {
-                throw new ExecutionError(e.message, pc + 1);
-            }
-        }
-    },
-
-    async handleLoopStart(commands, pc, stack) {
-        const condition = commands[pc].match(/нц пока\s+(.*)/)[1];
-        const loopStart = pc + 1;
-        let loopEnd = this.findMatchingEnd(commands, loopStart, 'нц', 'кц');
-
-        if (this.checkCondition(condition)) {
-            stack.push({ type: 'loop', start: loopStart, end: loopEnd });
-            return loopStart;
-        } else {
-            return loopEnd + 1;
-        }
-    },
-
-    handleLoopEnd(commands, pc, stack) {
-        const loop = stack.pop();
-        if (!loop || loop.type !== 'loop') {
-            throw new Error('Непарная команда "кц"');
-        }
-        return loop.start - 1;
-    },
-
-    async handleConditionStart(commands, pc) {
-        const condition = commands[pc].match(/если\s+(.*)\s+то/)[1];
-        const ifStart = pc + 1;
-        let ifEnd = this.findMatchingEnd(commands, ifStart, 'если', 'все');
-
-        if (this.checkCondition(condition)) {
-            return ifStart;
-        } else {
-            return ifEnd + 1;
-        }
-    },
-
-    findMatchingEnd(commands, start, startCmd, endCmd) {
-        let depth = 1;
-        for (let i = start; i < commands.length; i++) {
-            if (commands[i].startsWith(startCmd)) depth++;
-            if (commands[i] === endCmd) depth--;
-            if (depth === 0) return i;
-        }
-        throw new Error(`Не найдена парная команда для "${startCmd}"`);
-    },
-
-    checkCondition(condition) {
-        const match = condition.match(/(сверху|снизу|слева|справа)\s+(свободно|не свободно)/);
-        if (!match) return false;
-
-        const [_, direction, state] = match;
-        const dirMap = {
-            'сверху': 'вверх',
-            'снизу': 'вниз',
-            'слева': 'влево',
-            'справа': 'вправо'
-        };
-        const isFree = this.checkDirection(dirMap[direction]);
-        return state === 'свободно' ? isFree : !isFree;
-    },
-
-    checkDirection(direction) {
-        const [dx, dy] = {
-            'вверх': [0, -1],
-            'вниз': [0, 1],
-            'влево': [-1, 0],
-            'вправо': [1, 0]
-        }[direction];
-
-        const newX = FieldState.robot.x + dx;
-        const newY = FieldState.robot.y + dy;
-
-        // Проверка стен
-        const wallKey = `${FieldState.robot.x},${FieldState.robot.y},${newX},${newY}`;
-        if (FieldState.walls.has(wallKey)) return false;
-
-        // Проверка границ
-        return newX >= 0 && newX < FieldState.width &&
-               newY >= 0 && newY < FieldState.height;
-    },
-
-    async executeCommand(cmd, line) {
-        const directions = {
-            'вверх': [0, -1],
-            'вниз': [0, 1],
-            'влево': [-1, 0],
-            'вправо': [1, 0]
-        };
-
-        if (directions[cmd]) {
-            await this.moveRobot(directions[cmd], line);
-        } else if (cmd === 'закрасить') {
-            FieldState.painted.add(`${FieldState.robot.x},${FieldState.robot.y}`);
-            UpdateManager.updatePaintedCells();
-        }
-    },
-
-    async moveRobot([dx, dy], line) {
-        const newX = FieldState.robot.x + dx;
-        const newY = FieldState.robot.y + dy;
-        const wallKey = `${FieldState.robot.x},${FieldState.robot.y},${newX},${newY}`;
-
-        if (FieldState.walls.has(wallKey)) {
-            throw new Error('На пути стена');
-        }
-
-        if (newX < 0 || newX >= FieldState.width ||
-            newY < 0 || newY >= FieldState.height) {
-            throw new Error('Выход за границы поля');
-        }
-
-        if (FieldState.obstacles.has(`${newX},${newY}`)) {
-            throw new Error('Препятствие на пути');
-        }
-
-        FieldState.robot = { x: newX, y: newY };
-        await this.animateMovement();
-    },
-
-    async animateMovement() {
-        const robotElem = document.querySelector('.robot');
-        if (!robotElem) return;
-
-        robotElem.style.transition = 'all 0.3s ease';
-        robotElem.style.left = `${FieldState.robot.x * 42}px`;
-        robotElem.style.top = `${FieldState.robot.y * 42}px`;
-
-        await new Promise(resolve =>
-            robotElem.addEventListener('transitionend', resolve, { once: true })
-        );
-    },
-
-    reset() {
-        this.isRunning = false;
-        FieldState.robot = { x: 0, y: 0 };
-        FieldState.painted.clear();
-        UpdateManager.updatePaintedCells();
+        isRunning = false;
     },
 
     pause() {
-        this.isRunning = false;
+        isRunning = false;
+        clearTimeout(timeoutId);
+    },
+
+    reset() {
+        this.pause();
+        Robot.x = Robot.y = 0;
+        Robot.dir = 0;
+        Field.init();
+    },
+
+    parseCode(code) {
+        const commands = [];
+        const lines = code.toLowerCase().split('\n').map(l => l.trim());
+
+        for(const line of lines) {
+            if(line.startsWith('нц')) {
+                const count = line.match(/повторить (\d+)/)?.[1];
+                commands.push({type: 'loopStart', count});
+            }
+            else if(line === 'кц') commands.push({type: 'loopEnd'});
+            else if(line.startsWith('если')) commands.push({type: 'condition', cond: line});
+            else if(line in this.commandMap) commands.push({type: 'command', value: line});
+        }
+        return commands;
+    },
+
+    commandMap: {
+        'вправо': () => Robot.dir = 0,
+        'вниз': () => Robot.dir = 1,
+        'влево': () => Robot.dir = 2,
+        'вверх': () => Robot.dir = 3,
+        'закрасить': () => Field.obstacles.add(`${Robot.x},${Robot.y}`)
+    },
+
+    async executeCommands(commands) {
+        for(let i = 0; i < commands.length; i++) {
+            if(!isRunning) break;
+
+            const cmd = commands[i];
+            switch(cmd.type) {
+                case 'command':
+                    this.executeCommand(cmd.value);
+                    await new Promise(r => timeoutId = setTimeout(r, delay));
+                    break;
+                case 'condition':
+                    if(!this.checkCondition(cmd.cond)) {
+                        while(commands[i++]?.type !== 'все');
+                    }
+                    break;
+            }
+        }
+    },
+
+    executeCommand(cmd) {
+        if(cmd === 'вправо' || cmd === 'влево' || cmd === 'вверх' || cmd === 'вниз') {
+            const newPos = this.calculateNewPosition();
+            if(Field.checkObstacle(newPos.x, newPos.y))
+                throw new ExecutionError('Столкновение с препятствием');
+
+            Robot.x = newPos.x;
+            Robot.y = newPos.y;
+            this.updateRobotPosition();
+        }
+        else this.commandMap[cmd]();
+    },
+
+    calculateNewPosition() {
+        const dirs = [[1,0], [0,1], [-1,0], [0,-1]];
+        return {
+            x: Robot.x + dirs[Robot.dir][0],
+            y: Robot.y + dirs[Robot.dir][1]
+        };
+    },
+
+    updateRobotPosition() {
+        document.querySelectorAll('.cell').forEach(cell => {
+            cell.classList.remove('robot');
+            const x = parseInt(cell.style.left) / 10;
+            const y = parseInt(cell.style.top) / 10;
+            if(x === Robot.x && y === Robot.y) cell.classList.add('robot');
+            if(Robot.painting) cell.classList.add('painted');
+        });
     }
 };
 
-// Инициализация при загрузке
-window.addEventListener('load', () => {
-    FieldBuilder.init();
-    FieldBuilder.updateWalls();
-});
+function toggleTheme() {
+    document.body.classList.toggle('dark-theme');
+    document.querySelector('.theme-switcher button').innerHTML =
+        document.body.classList.contains('dark-theme')
+            ? '<i class="fas fa-sun"></i>'
+            : '<i class="fas fa-moon"></i>';
+}
+
+// Инициализация поля
+Field.init();
 </script>
 </body>
 </html>
