@@ -3,7 +3,6 @@
 <head>
     <title>Кумир симулятор</title>
     <style>
-        /* Стили остаются прежними */
         body { margin: 0; display: flex; height: 100vh; }
         .code-container, .field-container { padding: 20px; }
         .code-container { width: 40%; background: #f0f0f0; }
@@ -218,13 +217,13 @@ const ExecutionControl = {
             try {
                 switch(true) {
                     case cmd.startsWith('нц пока'):
-                        pc = await this.handleLoopStart(commands, pc);
+                        pc = await this.handleLoopStart(commands, pc, stack);
                         break;
                     case cmd === 'кц':
                         pc = this.handleLoopEnd(commands, pc, stack);
                         break;
                     case cmd.startsWith('если'):
-                        pc = this.handleConditionStart(commands, pc);
+                        pc = await this.handleConditionStart(commands, pc);
                         break;
                     case cmd === 'все':
                         pc++;
@@ -238,6 +237,84 @@ const ExecutionControl = {
                 throw new ExecutionError(e.message, pc + 1);
             }
         }
+    },
+
+    async handleLoopStart(commands, pc, stack) {
+        const condition = commands[pc].match(/нц пока\s+(.*)/)[1];
+        const loopStart = pc + 1;
+        let loopEnd = this.findMatchingEnd(commands, loopStart, 'нц', 'кц');
+
+        if (this.checkCondition(condition)) {
+            stack.push({ type: 'loop', start: loopStart, end: loopEnd });
+            return loopStart;
+        } else {
+            return loopEnd + 1;
+        }
+    },
+
+    handleLoopEnd(commands, pc, stack) {
+        const loop = stack.pop();
+        if (!loop || loop.type !== 'loop') {
+            throw new Error('Непарная команда "кц"');
+        }
+        return loop.start - 1;
+    },
+
+    async handleConditionStart(commands, pc) {
+        const condition = commands[pc].match(/если\s+(.*)\s+то/)[1];
+        const ifStart = pc + 1;
+        let ifEnd = this.findMatchingEnd(commands, ifStart, 'если', 'все');
+
+        if (this.checkCondition(condition)) {
+            return ifStart;
+        } else {
+            return ifEnd + 1;
+        }
+    },
+
+    findMatchingEnd(commands, start, startCmd, endCmd) {
+        let depth = 1;
+        for (let i = start; i < commands.length; i++) {
+            if (commands[i].startsWith(startCmd)) depth++;
+            if (commands[i] === endCmd) depth--;
+            if (depth === 0) return i;
+        }
+        throw new Error(`Не найдена парная команда для "${startCmd}"`);
+    },
+
+    checkCondition(condition) {
+        const match = condition.match(/(сверху|снизу|слева|справа)\s+(свободно|не свободно)/);
+        if (!match) return false;
+
+        const [_, direction, state] = match;
+        const dirMap = {
+            'сверху': 'вверх',
+            'снизу': 'вниз',
+            'слева': 'влево',
+            'справа': 'вправо'
+        };
+        const isFree = this.checkDirection(dirMap[direction]);
+        return state === 'свободно' ? isFree : !isFree;
+    },
+
+    checkDirection(direction) {
+        const [dx, dy] = {
+            'вверх': [0, -1],
+            'вниз': [0, 1],
+            'влево': [-1, 0],
+            'вправо': [1, 0]
+        }[direction];
+
+        const newX = FieldState.robot.x + dx;
+        const newY = FieldState.robot.y + dy;
+
+        // Проверка стен
+        const wallKey = `${FieldState.robot.x},${FieldState.robot.y},${newX},${newY}`;
+        if (FieldState.walls.has(wallKey)) return false;
+
+        // Проверка границ
+        return newX >= 0 && newX < FieldState.width &&
+               newY >= 0 && newY < FieldState.height;
     },
 
     async executeCommand(cmd, line) {
