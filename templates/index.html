@@ -100,10 +100,13 @@
     <div class="code-container">
         <textarea id="code">алг Движение
 нач
-  вправо
-  вправо
-  вверх
-  закрасить
+  нц пока справа свободно
+    вправо
+  кц
+  если снизу свободно то
+    вниз
+    закрасить
+  все
 кон</textarea>
         <button id="run-button" onclick="runCode()">Запустить программу</button>
     </div>
@@ -224,10 +227,50 @@
             });
         }
 
+        // Проверка условий "свободно" и "не свободно"
+        function checkCondition(condition) {
+            const match = condition.match(/(сверху|снизу|слева|справа)\s+(свободно|не свободно)/);
+            if (!match) return false;
+
+            const [_, direction, state] = match;
+            const dirMap = {
+                'сверху': 'вверх',
+                'снизу': 'вниз',
+                'слева': 'влево',
+                'справа': 'вправо'
+            };
+            const isFree = checkDirection(dirMap[direction]);
+            return state === 'свободно' ? isFree : !isFree;
+        }
+
+        // Проверка направления
+        function checkDirection(direction) {
+            const [x, y] = fieldState.robot_position;
+            const dirs = {
+                'вверх': [0, -1],
+                'вниз': [0, 1],
+                'влево': [-1, 0],
+                'вправо': [1, 0]
+            };
+            const [dx, dy] = dirs[direction];
+            const newX = x + dx;
+            const newY = y + dy;
+
+            // Проверка на стену
+            const wallKey1 = `${x},${y},${newX},${newY}`;
+            const wallKey2 = `${newX},${newY},${x},${y}`;
+            if (fieldState.walls.has(wallKey1) || fieldState.walls.has(wallKey2)) {
+                return false;
+            }
+
+            // Проверка на границы поля
+            return newX >= 0 && newX < fieldState.width && newY >= 0 && newY < fieldState.height;
+        }
+
         // Функция для выполнения кода
         function runCode() {
             const code = document.getElementById('code').value;
-            const commands = code.split('\n').map(line => line.trim().toLowerCase());
+            const lines = code.split('\n').map(line => line.trim().toLowerCase());
 
             // Сброс робота в начальное положение
             fieldState.robot_position = [...fieldState.start];
@@ -237,52 +280,95 @@
             // Выполнение команд
             let index = 0;
             const executeNextCommand = () => {
-                if (index >= commands.length) return;
+                if (index >= lines.length) return;
 
-                const command = commands[index];
-                console.log(`Выполнение команды: ${command}`);
+                const line = lines[index];
+                console.log(`Выполнение строки: ${line}`);
 
-                const [x, y] = fieldState.robot_position;
-                const dirs = {
-                    'вверх': [0, -1],
-                    'вниз': [0, 1],
-                    'влево': [-1, 0],
-                    'вправо': [1, 0]
-                };
+                if (line.startsWith('нц пока')) {
+                    // Обработка цикла "нц пока"
+                    const condition = line.match(/нц пока\s+(.*)/)[1];
+                    const loopStart = index + 1;
+                    let loopEnd = loopStart;
 
-                if (dirs[command]) {
-                    const [dx, dy] = dirs[command];
-                    const newX = x + dx;
-                    const newY = y + dy;
-
-                    // Проверка на столкновение со стеной
-                    const wallKey1 = `${x},${y},${newX},${newY}`;
-                    const wallKey2 = `${newX},${newY},${x},${y}`;
-                    if (fieldState.walls.has(wallKey1) || fieldState.walls.has(wallKey2)) {
-                        alert(`Робот разрушился при выполнении команды: ${command}`);
-                        return;
+                    // Находим конец цикла
+                    while (loopEnd < lines.length && !lines[loopEnd].startsWith('кц')) {
+                        loopEnd++;
                     }
 
-                    // Проверка на выход за границы поля
-                    if (newX < 0 || newX >= fieldState.width || newY < 0 || newY >= fieldState.height) {
-                        alert(`Робот вышел за границы поля при выполнении команды: ${command}`);
-                        return;
+                    const executeLoop = () => {
+                        if (checkCondition(condition)) {
+                            index = loopStart;
+                            executeNextCommand();
+                        } else {
+                            index = loopEnd + 1;
+                            executeNextCommand();
+                        }
+                    };
+
+                    executeLoop();
+                } else if (line.startsWith('если')) {
+                    // Обработка условия "если"
+                    const condition = line.match(/если\s+(.*)\s+то/)[1];
+                    const ifStart = index + 1;
+                    let ifEnd = ifStart;
+
+                    // Находим конец условия
+                    while (ifEnd < lines.length && !lines[ifEnd].startsWith('все')) {
+                        ifEnd++;
                     }
 
-                    // Перемещение робота
-                    fieldState.robot_position = [newX, newY];
-                    const cell = document.querySelector(`.cell[data-x="${newX}"][data-y="${newY}"]`);
-                    if (cell) {
-                        document.querySelectorAll('.robot').forEach(c => c.classList.remove('robot'));
-                        cell.classList.add('robot');
+                    if (checkCondition(condition)) {
+                        index = ifStart;
+                        executeNextCommand();
+                    } else {
+                        index = ifEnd + 1;
+                        executeNextCommand();
                     }
-                } else if (command === 'закрасить') {
-                    const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
-                    if (cell) cell.classList.add('painted');
+                } else {
+                    // Обработка обычных команд
+                    const [x, y] = fieldState.robot_position;
+                    const dirs = {
+                        'вверх': [0, -1],
+                        'вниз': [0, 1],
+                        'влево': [-1, 0],
+                        'вправо': [1, 0]
+                    };
+
+                    if (dirs[line]) {
+                        const [dx, dy] = dirs[line];
+                        const newX = x + dx;
+                        const newY = y + dy;
+
+                        // Проверка на стену
+                        const wallKey1 = `${x},${y},${newX},${newY}`;
+                        const wallKey2 = `${newX},${newY},${x},${y}`;
+                        if (fieldState.walls.has(wallKey1) || fieldState.walls.has(wallKey2)) {
+                            alert(`Робот разрушился при выполнении команды: ${line}`);
+                            return;
+                        }
+
+                        // Проверка на границы поля
+                        if (newX < 0 || newX >= fieldState.width || newY < 0 || newY >= fieldState.height) {
+                            alert(`Робот вышел за границы поля при выполнении команды: ${line}`);
+                            return;
+                        }
+
+                        // Перемещение робота
+                        fieldState.robot_position = [newX, newY];
+                        const cell = document.querySelector(`.cell[data-x="${newX}"][data-y="${newY}"]`);
+                        if (cell) {
+                            document.querySelectorAll('.robot').forEach(c => c.classList.remove('robot'));
+                            cell.classList.add('robot');
+                        }
+                    } else if (line === 'закрасить') {
+                        const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                        if (cell) cell.classList.add('painted');
+                    }
+
+                    index++;
+                    setTimeout(executeNextCommand, 500); // Задержка для анимации
                 }
-
-                index++;
-                setTimeout(executeNextCommand, 500); // Задержка для анимации
             };
 
             executeNextCommand();
