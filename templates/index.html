@@ -13,6 +13,7 @@
             --container-bg: rgba(255, 255, 255, 0.9);
             --border: #ddd;
             --button-bg: #007bff;
+            --cell-border: rgba(0, 0, 0, 0.1); /* Новая переменная для границ */
         }
 
         .dark-theme {
@@ -21,6 +22,7 @@
             --container-bg: rgba(0, 0, 0, 0.7);
             --border: #444;
             --button-bg: #555;
+            --cell-border: rgba(255, 255, 255, 0.15); /* Границы для темной темы */
         }
 
         body {
@@ -46,7 +48,7 @@
         }
 
         #code {
-            width: 100%;
+            width: calc(100% - 30px);
             height: 300px;
             font-family: 'Fira Code', monospace;
             background: var(--container-bg);
@@ -55,6 +57,7 @@
             border-radius: 10px;
             padding: 15px;
             resize: none;
+            margin: 0;
         }
 
         .controls {
@@ -81,18 +84,48 @@
             border: 2px solid var(--border);
             border-radius: 10px;
             aspect-ratio: 1;
+            overflow: hidden;
         }
 
         .cell {
             position: absolute;
             width: 10%;
             height: 10%;
-            border: 1px solid var(--border);
+            border: 1px solid var(--cell-border); /* Обновленные границы */
         }
 
-        .robot { background: #ff4444 !important; }
-        .painted { background: #aaffaa !important; }
-        .obstacle { background: #666 !important; }
+        .wall {
+            position: absolute;
+            background: transparent;
+            z-index: 2;
+            transition: background 0.2s;
+        }
+
+        .horizontal-wall {
+            width: 10%;
+            height: 2px;
+            cursor: row-resize;
+        }
+
+        .vertical-wall {
+            width: 2px;
+            height: 10%;
+            cursor: col-resize;
+        }
+
+        .wall.active {
+            background: #666;
+            box-shadow: 0 0 3px rgba(0,0,0,0.2);
+        }
+
+        .robot {
+            background: #ff4444 !important;
+            box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
+        }
+        .painted {
+            background: #aaffaa !important;
+            box-shadow: inset 0 0 5px rgba(0,128,0,0.2);
+        }
 
         .theme-switcher {
             position: fixed;
@@ -123,9 +156,8 @@
   все
 кон</textarea>
         <div class="controls">
-            <button onclick="ExecutionControl.start()"><i class="fas fa-play"></i> Старт</button>
-            <button onclick="ExecutionControl.pause()"><i class="fas fa-pause"></i> Пауза</button>
-            <button onclick="ExecutionControl.reset()"><i class="fas fa-undo"></i> Сброс</button>
+            <button class="start"><i class="fas fa-play"></i> Старт</button>
+            <button class="reset"><i class="fas fa-undo"></i> Сброс</button>
         </div>
     </div>
 
@@ -135,153 +167,206 @@
 
 <script>
 class ExecutionError extends Error {}
-let isRunning = false;
-let delay = 500;
-let timeoutId;
 
-const Robot = {
-    x: 0,
-    y: 0,
-    dir: 0,
-    painting: false
-};
-
+const Robot = { x:0, y:0, dir:0 };
 const Field = {
     size: 10,
-    obstacles: new Set(),
+    cells: new Map(),
     walls: new Set(),
 
     init() {
         const field = document.getElementById('field');
         field.innerHTML = '';
-        field.style.width = `${field.offsetWidth}px`;
+        this.cells.clear();
+        this.walls.clear();
 
+        // Создаем клетки с видимыми границами
         for(let y = 0; y < this.size; y++) {
             for(let x = 0; x < this.size; x++) {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
-                cell.style.left = `${x * 10}%`;
-                cell.style.top = `${y * 10}%`;
-                if(x === 0 && y === 0) cell.classList.add('robot');
+                cell.style.cssText = `left:${x*10}%;top:${y*10}%`;
+                this.cells.set(`${x},${y}`, cell);
                 field.appendChild(cell);
             }
         }
 
-        // Добавляем стены по периметру
-        for(let i = 0; i < this.size; i++) {
-            this.walls.add(`${i},-1`);
-            this.walls.add(`${i},${this.size}`);
-            this.walls.add(`-1,${i}`);
-            this.walls.add(`${this.size},${i}`);
+        // Создаем линии для стен между клетками
+        for(let y = 0; y < this.size; y++) {
+            for(let x = 0; x <= this.size; x++) {
+                this.createWall(x, y, 'vertical');
+            }
+        }
+
+        for(let y = 0; y <= this.size; y++) {
+            for(let x = 0; x < this.size; x++) {
+                this.createWall(x, y, 'horizontal');
+            }
+        }
+
+        this.updateRobot();
+    },
+
+    createWall(x, y, orientation) {
+        const wall = document.createElement('div');
+        wall.className = `wall ${orientation}-wall`;
+        wall.style.cssText = orientation === 'horizontal'
+            ? `left:${x*10}%;top:${y*10}%`
+            : `left:${x*10}%;top:${y*10}%`;
+
+        wall.dataset.x = x;
+        wall.dataset.y = y;
+        wall.dataset.orientation = orientation;
+
+        wall.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleWall(x, y, orientation);
+        });
+
+        document.getElementById('field').appendChild(wall);
+    },
+
+    toggleWall(x, y, orientation) {
+        const key = `${x},${y},${orientation}`;
+        const wall = document.querySelector(`[data-x="${x}"][data-y="${y}"][data-orientation="${orientation}"]`);
+
+        if(this.walls.has(key)) {
+            this.walls.delete(key);
+            wall.classList.remove('active');
+        } else {
+            this.walls.add(key);
+            wall.classList.add('active');
         }
     },
 
-    checkObstacle(x, y) {
-        return this.obstacles.has(`${x},${y}`) || this.walls.has(`${x},${y}`);
+    checkWall(x1, y1, x2, y2) {
+        const dx = x2 - x1;
+        const dy = y2 - y1;
+
+        if(dx === 1) return this.walls.has(`${x2},${y2},vertical`);
+        if(dx === -1) return this.walls.has(`${x1},${y1},vertical`);
+        if(dy === 1) return this.walls.has(`${x2},${y2},horizontal`);
+        if(dy === -1) return this.walls.has(`${x1},${y1},horizontal`);
+
+        return false;
+    },
+
+    updateRobot() {
+        this.cells.forEach((cell, key) => {
+            cell.classList.remove('robot');
+            if (key === `${Robot.x},${Robot.y}`) cell.classList.add('robot');
+        });
     }
 };
 
-const ExecutionControl = {
-    async start() {
-        if(isRunning) return;
-        isRunning = true;
+const Executor = {
+    delay: 500,
+    isRunning: false,
 
-        try {
-            const code = document.getElementById('code').value;
-            const commands = this.parseCode(code);
-            await this.executeCommands(commands);
-        } catch(e) {
-            alert(`Ошибка: ${e.message}`);
-        }
-        isRunning = false;
-    },
-
-    pause() {
-        isRunning = false;
-        clearTimeout(timeoutId);
-    },
-
-    reset() {
-        this.pause();
-        Robot.x = Robot.y = 0;
-        Robot.dir = 0;
-        Field.init();
-    },
-
-    parseCode(code) {
-        const commands = [];
-        const lines = code.toLowerCase().split('\n').map(l => l.trim());
-
-        for(const line of lines) {
-            if(line.startsWith('нц')) {
-                const count = line.match(/повторить (\d+)/)?.[1];
-                commands.push({type: 'loopStart', count});
-            }
-            else if(line === 'кц') commands.push({type: 'loopEnd'});
-            else if(line.startsWith('если')) commands.push({type: 'condition', cond: line});
-            else if(line in this.commandMap) commands.push({type: 'command', value: line});
-        }
-        return commands;
-    },
-
-    commandMap: {
+    commands: {
         'вправо': () => Robot.dir = 0,
         'вниз': () => Robot.dir = 1,
         'влево': () => Robot.dir = 2,
         'вверх': () => Robot.dir = 3,
-        'закрасить': () => Field.obstacles.add(`${Robot.x},${Robot.y}`)
+        'закрасить': () => Field.cells.get(`${Robot.x},${Robot.y}`)?.classList.add('painted')
     },
 
-    async executeCommands(commands) {
-        for(let i = 0; i < commands.length; i++) {
-            if(!isRunning) break;
+    async start(code) {
+        if (this.isRunning) return;
+        this.isRunning = true;
 
-            const cmd = commands[i];
+        try {
+            const parsed = this.parse(code);
+            await this.execute(parsed);
+        } catch(e) {
+            alert(`Ошибка: ${e.message}`);
+        }
+        this.isRunning = false;
+    },
+
+    parse(code) {
+        return code.toLowerCase().split('\n')
+            .map(l => l.trim())
+            .filter(l => l)
+            .map(line => ({
+                type: line.startsWith('нц') ? 'loop' :
+                      line.startsWith('если') ? 'if' :
+                      line === 'кц' ? 'end' : 'cmd',
+                value: line
+            }));
+    },
+
+    async execute(parsed) {
+        let ptr = 0;
+        while (ptr < parsed.length && this.isRunning) {
+            const cmd = parsed[ptr];
             switch(cmd.type) {
-                case 'command':
-                    this.executeCommand(cmd.value);
-                    await new Promise(r => timeoutId = setTimeout(r, delay));
+                case 'cmd':
+                    this.execCommand(cmd.value);
+                    await new Promise(r => setTimeout(r, this.delay));
+                    ptr++;
                     break;
-                case 'condition':
-                    if(!this.checkCondition(cmd.cond)) {
-                        while(commands[i++]?.type !== 'все');
-                    }
+                case 'loop':
+                    if (!this.checkCondition(cmd.value.replace('нц пока', ''))) {
+                        while(parsed[ptr++]?.type !== 'end');
+                    } else ptr++;
                     break;
+                case 'end': ptr++; break;
+                case 'if':
+                    if (!this.checkCondition(cmd.value.replace('если', '').split('то')[0])) {
+                        while(parsed[ptr++]?.type !== 'все');
+                    } else ptr++;
+                    break;
+                default: ptr++;
             }
         }
     },
 
-    executeCommand(cmd) {
-        if(cmd === 'вправо' || cmd === 'влево' || cmd === 'вверх' || cmd === 'вниз') {
-            const newPos = this.calculateNewPosition();
-            if(Field.checkObstacle(newPos.x, newPos.y))
-                throw new ExecutionError('Столкновение с препятствием');
+    execCommand(cmd) {
+        const move = () => {
+            const dirs = [[1,0], [0,1], [-1,0], [0,-1]];
+            const [dx, dy] = dirs[Robot.dir];
+            const newX = Robot.x + dx;
+            const newY = Robot.y + dy;
 
-            Robot.x = newPos.x;
-            Robot.y = newPos.y;
-            this.updateRobotPosition();
+            if(Field.checkWall(Robot.x, Robot.y, newX, newY)) {
+                throw new ExecutionError('Есть стена на пути');
+            }
+
+            if (newX < 0 || newX >= Field.size || newY < 0 || newY >= Field.size)
+                throw new ExecutionError('Выход за границы поля');
+
+            Robot.x = newX;
+            Robot.y = newY;
+            Field.updateRobot();
         }
-        else this.commandMap[cmd]();
+
+        this.commands[cmd]?.() || move();
     },
 
-    calculateNewPosition() {
-        const dirs = [[1,0], [0,1], [-1,0], [0,-1]];
-        return {
-            x: Robot.x + dirs[Robot.dir][0],
-            y: Robot.y + dirs[Robot.dir][1]
-        };
-    },
+    checkCondition(cond) {
+        const dirs = { 'справа':0, 'снизу':1, 'слева':2, 'сверху':3 };
+        const [dirPart, check] = cond.trim().split(' ');
+        const checkDir = dirs[dirPart];
 
-    updateRobotPosition() {
-        document.querySelectorAll('.cell').forEach(cell => {
-            cell.classList.remove('robot');
-            const x = parseInt(cell.style.left) / 10;
-            const y = parseInt(cell.style.top) / 10;
-            if(x === Robot.x && y === Robot.y) cell.classList.add('robot');
-            if(Robot.painting) cell.classList.add('painted');
-        });
+        const [dx, dy] = [[1,0], [0,1], [-1,0], [0,-1]][checkDir];
+        const checkX = Robot.x + dx;
+        const checkY = Robot.y + dy;
+
+        const hasWall = Field.checkWall(Robot.x, Robot.y, checkX, checkY);
+
+        return check === 'свободно' ?
+            !hasWall && checkX >= 0 && checkX < Field.size && checkY >= 0 && checkY < Field.size :
+            false;
     }
 };
+
+// Инициализация
+Field.init();
+document.querySelector('.controls').addEventListener('click', e => {
+    if (e.target.classList.contains('start')) Executor.start(document.getElementById('code').value);
+    if (e.target.classList.contains('reset')) Field.init();
+});
 
 function toggleTheme() {
     document.body.classList.toggle('dark-theme');
@@ -290,9 +375,6 @@ function toggleTheme() {
             ? '<i class="fas fa-sun"></i>'
             : '<i class="fas fa-moon"></i>';
 }
-
-// Инициализация поля
-Field.init();
 </script>
 </body>
 </html>
