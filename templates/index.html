@@ -13,7 +13,7 @@
             --container-bg: rgba(255, 255, 255, 0.9);
             --border: #ddd;
             --button-bg: #007bff;
-            --cell-border: rgba(0, 0, 0, 0.1); /* Новая переменная для границ */
+            --cell-border: rgba(0, 0, 0, 0.1);
         }
 
         .dark-theme {
@@ -22,7 +22,7 @@
             --container-bg: rgba(0, 0, 0, 0.7);
             --border: #444;
             --button-bg: #555;
-            --cell-border: rgba(255, 255, 255, 0.15); /* Границы для темной темы */
+            --cell-border: rgba(255, 255, 255, 0.15);
         }
 
         body {
@@ -91,7 +91,8 @@
             position: absolute;
             width: 10%;
             height: 10%;
-            border: 1px solid var(--cell-border); /* Обновленные границы */
+            border: 1px solid var(--cell-border);
+            cursor: pointer;
         }
 
         .wall {
@@ -168,7 +169,14 @@
 <script>
 class ExecutionError extends Error {}
 
-const Robot = { x:0, y:0, dir:0 };
+const Robot = {
+    x: 0,
+    y: 0,
+    dir: 0,
+    startX: 0,
+    startY: 0
+};
+
 const Field = {
     size: 10,
     cells: new Map(),
@@ -180,18 +188,26 @@ const Field = {
         this.cells.clear();
         this.walls.clear();
 
-        // Создаем клетки с видимыми границами
+        // Создаем клетки
         for(let y = 0; y < this.size; y++) {
             for(let x = 0; x < this.size; x++) {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
                 cell.style.cssText = `left:${x*10}%;top:${y*10}%`;
+
+                // Обработчик двойного клика
+                cell.addEventListener('dblclick', () => {
+                    Robot.startX = x;
+                    Robot.startY = y;
+                    this.resetRobot();
+                });
+
                 this.cells.set(`${x},${y}`, cell);
                 field.appendChild(cell);
             }
         }
 
-        // Создаем линии для стен между клетками
+        // Создаем стены
         for(let y = 0; y < this.size; y++) {
             for(let x = 0; x <= this.size; x++) {
                 this.createWall(x, y, 'vertical');
@@ -204,7 +220,7 @@ const Field = {
             }
         }
 
-        this.updateRobot();
+        this.resetRobot();
     },
 
     createWall(x, y, orientation) {
@@ -256,6 +272,14 @@ const Field = {
             cell.classList.remove('robot');
             if (key === `${Robot.x},${Robot.y}`) cell.classList.add('robot');
         });
+    },
+
+    resetRobot() {
+        Robot.x = Robot.startX;
+        Robot.y = Robot.startY;
+        Robot.dir = 0;
+        this.cells.forEach(cell => cell.classList.remove('painted'));
+        this.updateRobot();
     }
 };
 
@@ -280,8 +304,10 @@ const Executor = {
             await this.execute(parsed);
         } catch(e) {
             alert(`Ошибка: ${e.message}`);
+        } finally {
+            this.isRunning = false;
+            Field.resetRobot(); // Возврат в стартовую позицию
         }
-        this.isRunning = false;
     },
 
     parse(code) {
@@ -365,7 +391,7 @@ const Executor = {
 Field.init();
 document.querySelector('.controls').addEventListener('click', e => {
     if (e.target.classList.contains('start')) Executor.start(document.getElementById('code').value);
-    if (e.target.classList.contains('reset')) Field.init();
+    if (e.target.classList.contains('reset')) Field.resetRobot();
 });
 
 function toggleTheme() {
