@@ -79,12 +79,13 @@ button:hover { filter: brightness(1.2); }
     position: absolute;
     width: 10%;
     height: 10%;
-    border: 1px solid transparent;
+    border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .wall {
     position: absolute;
-    background: #666;
+    background: transparent;
+    transition: background 0.3s;
     z-index: 2;
 }
 
@@ -98,6 +99,10 @@ button:hover { filter: brightness(1.2); }
     width: 2px;
     height: 10%;
     cursor: col-resize;
+}
+
+.wall.active {
+    background: #666 !important;
 }
 
 .robot { background: #ff4444 !important; }

@@ -33,7 +33,6 @@ class Field:
 
 
 def execute_code(code, field):
-    # Логика выполнения кода
     commands = parse_code(code)
     result = []
     for cmd in commands:
@@ -51,7 +50,6 @@ def execute_code(code, field):
 
 
 def parse_code(code):
-    # Логика парсинга кода
     commands = []
     lines = code.lower().split('\n')
     for line in lines:

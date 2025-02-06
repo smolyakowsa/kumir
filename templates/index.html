@@ -5,11 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Кумир симулятор</title>
     <link href="https://fonts.googleapis.com/css2?family=Segoe+UI&family=Fira+Code&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
     <div class="theme-switcher">
-        <button onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
+        <button onclick="toggleTheme()">
+            <i class="fas fa-moon"></i>
+            <i class="fas fa-sun" style="display: none;"></i>
+        </button>
     </div>
 
     <div class="code-container">
