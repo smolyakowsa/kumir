@@ -283,6 +283,7 @@ const Field = {
     }
 };
 
+
 const Executor = {
     delay: 500,
     isRunning: false,
@@ -300,107 +301,134 @@ const Executor = {
         this.isRunning = true;
 
         try {
-            const parsed = this.parse(code);
-            await this.execute(parsed);
+            const commands = this.parse(code);
+            await this.execute(commands);
         } catch(e) {
             alert(`Ошибка: ${e.message}`);
-        } finally {
             this.isRunning = false;
-            Field.resetRobot(); // Возврат в стартовую позицию
         }
     },
 
     parse(code) {
-        return code.toLowerCase().split('\n')
-            .map(l => l.trim())
-            .filter(l => l)
-            .map(line => ({
-                type: line.startsWith('нц') ? 'loop' :
-                      line.startsWith('если') ? 'if' :
-                      line === 'кц' ? 'end' : 'cmd',
-                value: line
-            }));
+        const commands = [];
+        const lines = code.toLowerCase()
+            .split('\n')
+            .map(line => line.trim().replace(/^нач|кон$/g, ''))
+            .filter(line => line);
+
+        let loopStack = [];
+        let ifStack = [];
+
+        lines.forEach(line => {
+            // Обработка циклов
+            if (line.startsWith('нц')) {
+                const condition = line.replace('нц', '').trim();
+                commands.push({ type: 'loopStart', condition });
+                loopStack.push(commands.length - 1);
+            }
+            // Обработка условий
+            else if (line.startsWith('если')) {
+                const condition = line.replace('если', '').split('то')[0].trim();
+                commands.push({ type: 'if', condition });
+                ifStack.push(commands.length - 1);
+            }
+            // Команды движения
+            else {
+                const cmd = line.match(/^(вправо|влево|вверх|вниз|закрасить)/)?.[1];
+                if (cmd) commands.push({ type: 'command', cmd });
+            }
+        });
+
+        return commands;
     },
 
-    async execute(parsed) {
+    async execute(commands) {
         let ptr = 0;
-        while (ptr < parsed.length && this.isRunning) {
-            const cmd = parsed[ptr];
+        while (ptr < commands.length && this.isRunning) {
+            const cmd = commands[ptr];
+            console.log('Выполняем:', cmd); // Отладка
+
             switch(cmd.type) {
-                case 'cmd':
-                    this.execCommand(cmd.value);
+                case 'command':
+                    this.execCommand(cmd.cmd);
                     await new Promise(r => setTimeout(r, this.delay));
                     ptr++;
                     break;
-                case 'loop':
-                    if (!this.checkCondition(cmd.value.replace('нц пока', ''))) {
-                        while(parsed[ptr++]?.type !== 'end');
-                    } else ptr++;
+
+                case 'loopStart':
+                    if (!this.checkCondition(cmd.condition)) {
+                        ptr = this.findLoopEnd(commands, ptr);
+                    } else {
+                        ptr++;
+                    }
                     break;
-                case 'end': ptr++; break;
+
                 case 'if':
-                    if (!this.checkCondition(cmd.value.replace('если', '').split('то')[0])) {
-                        while(parsed[ptr++]?.type !== 'все');
-                    } else ptr++;
+                    if (!this.checkCondition(cmd.condition)) {
+                        ptr = this.findEndIf(commands, ptr);
+                    } else {
+                        ptr++;
+                    }
                     break;
-                default: ptr++;
+
+                default:
+                    ptr++;
             }
         }
+        this.isRunning = false;
     },
 
     execCommand(cmd) {
-        const move = () => {
+        if (!this.commands[cmd]) throw new Error(`Неизвестная команда: ${cmd}`);
+
+        // Для команд движения
+        if (['вправо','влево','вверх','вниз'].includes(cmd)) {
             const dirs = [[1,0], [0,1], [-1,0], [0,-1]];
             const [dx, dy] = dirs[Robot.dir];
             const newX = Robot.x + dx;
             const newY = Robot.y + dy;
 
-            if(Field.checkWall(Robot.x, Robot.y, newX, newY)) {
-                throw new ExecutionError('Есть стена на пути');
+            if (Field.checkWall(Robot.x, Robot.y, newX, newY)) {
+                throw new ExecutionError('На пути стена!');
             }
-
-            if (newX < 0 || newX >= Field.size || newY < 0 || newY >= Field.size)
-                throw new ExecutionError('Выход за границы поля');
 
             Robot.x = newX;
             Robot.y = newY;
             Field.updateRobot();
         }
-
-        this.commands[cmd]?.() || move();
+        // Для других команд
+        else {
+            this.commands[cmd]();
+        }
     },
 
     checkCondition(cond) {
-        const dirs = { 'справа':0, 'снизу':1, 'слева':2, 'сверху':3 };
-        const [dirPart, check] = cond.trim().split(' ');
-        const checkDir = dirs[dirPart];
+        // Логика проверки условий
+        const dirMap = {
+            'справа': 0, 'снизу': 1,
+            'слева': 2, 'сверху': 3
+        };
 
-        const [dx, dy] = [[1,0], [0,1], [-1,0], [0,-1]][checkDir];
+        const [dir, state] = cond.split(' ');
+        const direction = dirMap[dir];
+
+        const [dx, dy] = [[1,0], [0,1], [-1,0], [0,-1]][direction];
         const checkX = Robot.x + dx;
         const checkY = Robot.y + dy;
 
-        const hasWall = Field.checkWall(Robot.x, Robot.y, checkX, checkY);
-
-        return check === 'свободно' ?
-            !hasWall && checkX >= 0 && checkX < Field.size && checkY >= 0 && checkY < Field.size :
-            false;
+        return Field.isCellFree(checkX, checkY);
     }
 };
 
 // Инициализация
 Field.init();
 document.querySelector('.controls').addEventListener('click', e => {
-    if (e.target.classList.contains('start')) Executor.start(document.getElementById('code').value);
-    if (e.target.classList.contains('reset')) Field.resetRobot();
+    if (e.target.classList.contains('start')) {
+        const code = document.getElementById('code').value;
+        Executor.start(code);
+    }
+    if (e.target.classList.contains('reset')) Field.init();
 });
-
-function toggleTheme() {
-    document.body.classList.toggle('dark-theme');
-    document.querySelector('.theme-switcher button').innerHTML =
-        document.body.classList.contains('dark-theme')
-            ? '<i class="fas fa-sun"></i>'
-            : '<i class="fas fa-moon"></i>';
-}
 </script>
 </body>
 </html>
