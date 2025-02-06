@@ -1,182 +1,6 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Кумир симулятор</title>
-    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI&family=Fira+Code&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    <style>
-        :root {
-            --bg: #f5f7fa;
-            --text: #333;
-            --container-bg: rgba(255, 255, 255, 0.9);
-            --border: #ddd;
-            --button-bg: #007bff;
-            --cell-border: rgba(0, 0, 0, 0.1);
-        }
-
-        .dark-theme {
-            --bg: linear-gradient(135deg, #2c3e50, #34495e);
-            --text: #fff;
-            --container-bg: rgba(0, 0, 0, 0.7);
-            --border: #444;
-            --button-bg: #555;
-            --cell-border: rgba(255, 255, 255, 0.15);
-        }
-
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            transition: background 0.3s, color 0.3s;
-        }
-
-        .code-container, .field-container {
-            background: var(--container-bg);
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            padding: 25px;
-            margin: 10px;
-            width: 40%;
-            backdrop-filter: blur(10px);
-        }
-
-        #code {
-            width: calc(100% - 30px);
-            height: 300px;
-            font-family: 'Fira Code', monospace;
-            background: var(--container-bg);
-            border: 2px solid var(--border);
-            color: var(--text);
-            border-radius: 10px;
-            padding: 15px;
-            resize: none;
-            margin: 0;
-        }
-
-        .controls {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-
-        button {
-            padding: 12px;
-            background: var(--button-bg);
-            color: #fff;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: filter 0.2s;
-        }
-
-        button:hover { filter: brightness(1.2); }
-
-        #field {
-            position: relative;
-            background: var(--container-bg);
-            border: 2px solid var(--border);
-            border-radius: 10px;
-            aspect-ratio: 1;
-            overflow: hidden;
-        }
-
-        .cell {
-            position: absolute;
-            width: 10%;
-            height: 10%;
-            border: 1px solid var(--cell-border);
-            cursor: pointer;
-        }
-
-        .wall {
-            position: absolute;
-            background: transparent;
-            z-index: 2;
-            transition: background 0.2s;
-        }
-
-        .horizontal-wall {
-            width: 10%;
-            height: 2px;
-            cursor: row-resize;
-        }
-
-        .vertical-wall {
-            width: 2px;
-            height: 10%;
-            cursor: col-resize;
-        }
-
-        .wall.active {
-            background: #666;
-            box-shadow: 0 0 3px rgba(0,0,0,0.2);
-        }
-
-        .robot {
-            background: #ff4444 !important;
-            box-shadow: 0 0 10px rgba(255, 68, 68, 0.3);
-        }
-        .painted {
-            background: #aaffaa !important;
-            box-shadow: inset 0 0 5px rgba(0,128,0,0.2);
-        }
-
-        .theme-switcher {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-        }
-
-        @media (max-width: 768px) {
-            body { flex-direction: column; }
-            .code-container, .field-container { width: 90%; }
-        }
-    </style>
-</head>
-<body>
-    <div class="theme-switcher">
-        <button onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
-    </div>
-
-    <div class="code-container">
-        <textarea id="code">алг Движение
-нач
-  нц пока справа свободно
-    вправо
-  кц
-  если снизу свободно то
-    вниз
-    закрасить
-  все
-кон</textarea>
-        <div class="controls">
-            <button class="start"><i class="fas fa-play"></i> Старт</button>
-            <button class="reset"><i class="fas fa-undo"></i> Сброс</button>
-        </div>
-    </div>
-
-    <div class="field-container">
-        <div id="field"></div>
-    </div>
-
-<script>
 class ExecutionError extends Error {}
 
-const Robot = {
-    x: 0,
-    y: 0,
-    dir: 0,
-    startX: 0,
-    startY: 0
-};
-
+const Robot = { x:0, y:0, dir:0 };
 const Field = {
     size: 10,
     cells: new Map(),
@@ -194,20 +18,12 @@ const Field = {
                 const cell = document.createElement('div');
                 cell.className = 'cell';
                 cell.style.cssText = `left:${x*10}%;top:${y*10}%`;
-
-                // Обработчик двойного клика
-                cell.addEventListener('dblclick', () => {
-                    Robot.startX = x;
-                    Robot.startY = y;
-                    this.resetRobot();
-                });
-
                 this.cells.set(`${x},${y}`, cell);
                 field.appendChild(cell);
             }
         }
 
-        // Создаем стены
+        // Создаем линии для стен
         for(let y = 0; y < this.size; y++) {
             for(let x = 0; x <= this.size; x++) {
                 this.createWall(x, y, 'vertical');
@@ -220,7 +36,7 @@ const Field = {
             }
         }
 
-        this.resetRobot();
+        this.updateRobot();
     },
 
     createWall(x, y, orientation) {
@@ -244,14 +60,14 @@ const Field = {
 
     toggleWall(x, y, orientation) {
         const key = `${x},${y},${orientation}`;
-        const wall = document.querySelector(`[data-x="${x}"][data-y="${y}"][data-orientation="${orientation}"]`);
-
         if(this.walls.has(key)) {
             this.walls.delete(key);
-            wall.classList.remove('active');
+            document.querySelector(`[data-x="${x}"][data-y="${y}"][data-orientation="${orientation}"]`)
+                .style.background = 'transparent';
         } else {
             this.walls.add(key);
-            wall.classList.add('active');
+            document.querySelector(`[data-x="${x}"][data-y="${y}"][data-orientation="${orientation}"]`)
+                .style.background = '#666';
         }
     },
 
@@ -267,22 +83,17 @@ const Field = {
         return false;
     },
 
+    isCellFree(x, y) {
+        return x >= 0 && x < this.size && y >= 0 && y < this.size && !this.checkWall(Robot.x, Robot.y, x, y);
+    },
+
     updateRobot() {
         this.cells.forEach((cell, key) => {
             cell.classList.remove('robot');
             if (key === `${Robot.x},${Robot.y}`) cell.classList.add('robot');
         });
-    },
-
-    resetRobot() {
-        Robot.x = Robot.startX;
-        Robot.y = Robot.startY;
-        Robot.dir = 0;
-        this.cells.forEach(cell => cell.classList.remove('painted'));
-        this.updateRobot();
     }
 };
-
 
 const Executor = {
     delay: 500,
@@ -305,8 +116,8 @@ const Executor = {
             await this.execute(commands);
         } catch(e) {
             alert(`Ошибка: ${e.message}`);
-            this.isRunning = false;
         }
+        this.isRunning = false;
     },
 
     parse(code) {
@@ -316,23 +127,21 @@ const Executor = {
             .map(line => line.trim().replace(/^нач|кон$/g, ''))
             .filter(line => line);
 
-        let loopStack = [];
-        let ifStack = [];
-
         lines.forEach(line => {
-            // Обработка циклов
             if (line.startsWith('нц')) {
                 const condition = line.replace('нц', '').trim();
                 commands.push({ type: 'loopStart', condition });
-                loopStack.push(commands.length - 1);
             }
-            // Обработка условий
             else if (line.startsWith('если')) {
                 const condition = line.replace('если', '').split('то')[0].trim();
                 commands.push({ type: 'if', condition });
-                ifStack.push(commands.length - 1);
             }
-            // Команды движения
+            else if (line === 'кц') {
+                commands.push({ type: 'loopEnd' });
+            }
+            else if (line === 'все') {
+                commands.push({ type: 'endIf' });
+            }
             else {
                 const cmd = line.match(/^(вправо|влево|вверх|вниз|закрасить)/)?.[1];
                 if (cmd) commands.push({ type: 'command', cmd });
@@ -340,6 +149,23 @@ const Executor = {
         });
 
         return commands;
+    },
+
+    findLoopEnd(commands, startIndex) {
+        let depth = 1;
+        for (let i = startIndex + 1; i < commands.length; i++) {
+            if (commands[i].type === 'loopStart') depth++;
+            if (commands[i].type === 'loopEnd') depth--;
+            if (depth === 0) return i + 1;
+        }
+        throw new ExecutionError('Не найдено окончание цикла');
+    },
+
+    findEndIf(commands, startIndex) {
+        for (let i = startIndex + 1; i < commands.length; i++) {
+            if (commands[i].type === 'endIf') return i + 1;
+        }
+        throw new ExecutionError('Не найдено окончание условия');
     },
 
     async execute(commands) {
@@ -381,7 +207,6 @@ const Executor = {
     execCommand(cmd) {
         if (!this.commands[cmd]) throw new Error(`Неизвестная команда: ${cmd}`);
 
-        // Для команд движения
         if (['вправо','влево','вверх','вниз'].includes(cmd)) {
             const dirs = [[1,0], [0,1], [-1,0], [0,-1]];
             const [dx, dy] = dirs[Robot.dir];
@@ -396,14 +221,12 @@ const Executor = {
             Robot.y = newY;
             Field.updateRobot();
         }
-        // Для других команд
         else {
             this.commands[cmd]();
         }
     },
 
     checkCondition(cond) {
-        // Логика проверки условий
         const dirMap = {
             'справа': 0, 'снизу': 1,
             'слева': 2, 'сверху': 3
@@ -429,6 +252,11 @@ document.querySelector('.controls').addEventListener('click', e => {
     }
     if (e.target.classList.contains('reset')) Field.init();
 });
-</script>
-</body>
-</html>
+
+function toggleTheme() {
+    document.body.classList.toggle('dark-theme');
+    document.querySelector('.theme-switcher button').innerHTML =
+        document.body.classList.contains('dark-theme')
+            ? '<i class="fas fa-sun"></i>'
+            : '<i class="fas fa-moon"></i>';
+}

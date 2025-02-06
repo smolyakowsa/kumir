@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Кумир симулятор</title>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI&family=Fira+Code&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css"> <!-- Подключение CSS -->
+</head>
+<body>
+    <div class="theme-switcher">
+        <button onclick="toggleTheme()"><i class="fas fa-moon"></i></button>
+    </div>
+
+    <div class="code-container">
+        <textarea id="code">алг Движение
+нач
+  нц пока справа свободно
+    вправо
+  кц
+  если снизу свободно то
+    вниз
+    закрасить
+  все
+кон</textarea>
+        <div class="controls">
+            <button class="start"><i class="fas fa-play"></i> Старт</button>
+            <button class="reset"><i class="fas fa-undo"></i> Сброс</button>
+        </div>
+    </div>
+
+    <div class="field-container">
+        <div id="field"></div>
+    </div>
+
+    <script src="script.js"></script> <!-- Подключение JavaScript -->
+</body>
+</html>

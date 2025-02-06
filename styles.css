@@ -1,0 +1,115 @@
+:root {
+    --bg: #f5f7fa;
+    --text: #333;
+    --container-bg: rgba(255, 255, 255, 0.9);
+    --border: #ddd;
+    --button-bg: #007bff;
+}
+
+.dark-theme {
+    --bg: linear-gradient(135deg, #2c3e50, #34495e);
+    --text: #fff;
+    --container-bg: rgba(0, 0, 0, 0.7);
+    --border: #444;
+    --button-bg: #555;
+}
+
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    transition: background 0.3s, color 0.3s;
+}
+
+.code-container, .field-container {
+    background: var(--container-bg);
+    border-radius: 15px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    padding: 25px;
+    margin: 10px;
+    width: 40%;
+    backdrop-filter: blur(10px);
+}
+
+#code {
+    width: calc(100% - 30px);
+    height: 300px;
+    font-family: 'Fira Code', monospace;
+    background: var(--container-bg);
+    border: 2px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 15px;
+    resize: none;
+}
+
+.controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+button {
+    padding: 12px;
+    background: var(--button-bg);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: filter 0.2s;
+}
+
+button:hover { filter: brightness(1.2); }
+
+#field {
+    position: relative;
+    background: var(--container-bg);
+    border: 2px solid var(--border);
+    border-radius: 10px;
+    aspect-ratio: 1;
+    overflow: hidden;
+}
+
+.cell {
+    position: absolute;
+    width: 10%;
+    height: 10%;
+    border: 1px solid transparent;
+}
+
+.wall {
+    position: absolute;
+    background: #666;
+    z-index: 2;
+}
+
+.horizontal-wall {
+    width: 10%;
+    height: 2px;
+    cursor: row-resize;
+}
+
+.vertical-wall {
+    width: 2px;
+    height: 10%;
+    cursor: col-resize;
+}
+
+.robot { background: #ff4444 !important; }
+.painted { background: #aaffaa !important; }
+
+.theme-switcher {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+}
+
+@media (max-width: 768px) {
+    body { flex-direction: column; }
+    .code-container, .field-container { width: 90%; }
+}
