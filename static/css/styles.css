@@ -74,8 +74,9 @@ button:hover {
 
 .wall {
     position: absolute;
-    background: #666;
+    background: transparent;
     z-index: 2;
+    transition: background 0.2s;
 }
 
 .horizontal-wall {
@@ -88,6 +89,10 @@ button:hover {
     width: 2px;
     height: 10%;
     cursor: pointer;
+}
+
+.wall.active {
+    background: #666 !important;
 }
 
 .robot {
