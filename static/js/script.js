@@ -1,5 +1,6 @@
 let isRunning = false;
 let walls = new Set();
+let animationDelay = 300; // Задержка анимации
 
 // Функция для получения текущего состояния поля
 async function fetchFieldState() {
@@ -14,9 +15,8 @@ async function updateField(data) {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
             walls: Array.from(walls).map(wall => {
-                // Исправлено: гарантированное преобразование в строку
-                const parts = String(wall).split(',');
-                return [parseInt(parts[0]), parseInt(parts[1]), parts[2]];
+                const [x, y, orientation] = wall.split(',');
+                return [parseInt(x), parseInt(y), orientation];
             }),
             painted: data.painted || [],
             robot: data.robot || {x: 0, y: 0, dir: 0}
@@ -32,54 +32,76 @@ function createWallElement(x, y, orientation) {
         ? `left:${x * 10}%;top:${y * 10}%`
         : `left:${x * 10}%;top:${y * 10}%`;
 
-    // Исправлено: ключ стены как строки
-    const wallKey = `${x},${y},${orientation}`;
-    wall.dataset.key = wallKey;
+    wall.dataset.x = x;
+    wall.dataset.y = y;
+    wall.dataset.orientation = orientation;
 
-    // Проверка наличия стены
-    if (walls.has(wallKey)) {
+    // Проверяем, есть ли стена в текущем состоянии
+    const key = `${x},${y},${orientation}`;
+    if (walls.has(key)) {
         wall.style.background = '#666';
     }
 
     wall.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const key = e.target.dataset.key;
+        const key = `${x},${y},${orientation}`;
         const newWalls = new Set(walls);
-        newWalls.has(key) ? newWalls.delete(key) : newWalls.add(key);
+        if (newWalls.has(key)) {
+            newWalls.delete(key);
+            wall.style.background = 'transparent';
+        } else {
+            newWalls.add(key);
+            wall.style.background = '#666';
+        }
         walls = newWalls;
         await updateField({ walls: Array.from(walls) });
-        renderField(await fetchFieldState());
     });
 
     return wall;
+}
+
+// Обработка двойного клика по клетке
+function handleCellDoubleClick(x, y) {
+    if (isRunning) return;
+    updateField({
+        robot: { x: x, y: y, dir: 0 },
+        walls: Array.from(walls)
+    }).then(() => fetchFieldState()).then(renderField);
 }
 
 // Отрисовка поля
 function renderField(state) {
     const field = document.getElementById('field');
     field.innerHTML = '';
+    walls = new Set(state.walls);
 
-    // Исправлено: преобразование стен в строки
-    walls = new Set(state.walls.map(w => `${w[0]},${w[1]},${w[2]}`));
-
-    // Отрисовка клеток...
+    // Создаем клетки
     for (let y = 0; y < state.size; y++) {
         for (let x = 0; x < state.size; x++) {
             const cell = document.createElement('div');
             cell.className = 'cell';
             cell.style.cssText = `left:${x * 10}%;top:${y * 10}%`;
-            if (x === state.robot.x && y === state.robot.y) cell.classList.add('robot');
-            if (state.painted.some(p => p[0] === x && p[1] === y)) cell.classList.add('painted');
+
+            // Обработчик двойного клика
+            cell.addEventListener('dblclick', () => handleCellDoubleClick(x, y));
+
+            if (x === state.robot.x && y === state.robot.y) {
+                cell.classList.add('robot');
+            }
+            if (state.painted.some(p => p[0] === x && p[1] === y)) {
+                cell.classList.add('painted');
+            }
             field.appendChild(cell);
         }
     }
 
-    // Отрисовка стен...
+    // Создаем стены
     for (let y = 0; y <= state.size; y++) {
         for (let x = 0; x < state.size; x++) {
             field.appendChild(createWallElement(x, y, 'horizontal'));
         }
     }
+
     for (let y = 0; y < state.size; y++) {
         for (let x = 0; x <= state.size; x++) {
             field.appendChild(createWallElement(x, y, 'vertical'));
@@ -120,7 +142,7 @@ async function runCode() {
             renderField(state);
 
             // Задержка для анимации
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, animationDelay));
         }
     } catch (error) {
         alert(`Ошибка: ${error}`);
