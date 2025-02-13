@@ -1,11 +1,12 @@
 class Field:
     def __init__(self):
         self.size = 10
-        self.robot = {'x': 0, 'y': 0, 'dir': 0}  # Робот начинает в левом верхнем углу
+        self.robot = {'x': 0, 'y': 0}  # Начальная позиция робота
         self.walls = set()  # Множество стен в формате {(x1, y1, x2, y2)}
         self.painted = set()  # Закрашенные клетки
 
     def get_state(self):
+        """Возвращает текущее состояние поля."""
         return {
             'robot': self.robot,
             'walls': list(self.walls),
@@ -14,17 +15,34 @@ class Field:
         }
 
     def update(self, data):
+        """Обновляет состояние поля."""
         if 'walls' in data:
-            self.walls = set(tuple(wall) for wall in data['walls'])
+            self.walls = set()
+            for wall in data['walls']:
+                # Преобразуем формат стен из [x, y, orientation] в (x1, y1, x2, y2)
+                x, y, orientation = wall
+                if orientation == 'horizontal':
+                    self.walls.add((x, y, x + 1, y))  # Горизонтальная стена
+                elif orientation == 'vertical':
+                    self.walls.add((x, y, x, y + 1))  # Вертикальная стена
+
         if 'painted' in data:
-            self.painted = set(tuple(painted) for painted in data['painted'])
+            self.painted = set(tuple(p) for p in data['painted'])
+
         if 'robot' in data:
-            self.robot = data['robot']
+            # Проверяем, что новые координаты робота допустимы
+            x = data['robot'].get('x', 0)
+            y = data['robot'].get('y', 0)
+            if not (0 <= x < self.size and 0 <= y < self.size):
+                raise ValueError("Недопустимые координаты робота")
+            self.robot.update(data['robot'])
 
     def is_cell_free(self, x, y):
         """Проверяет, свободна ли клетка (x, y)."""
         if not (0 <= x < self.size and 0 <= y < self.size):
             return False  # Клетка за пределами поля
+
+        # Проверяем, не пересекается ли клетка со стенами
         for wall in self.walls:
             x1, y1, x2, y2 = wall
             if (x1 <= x <= x2 and y1 <= y <= y2) or (x2 <= x <= x1 and y2 <= y <= y1):
@@ -40,9 +58,9 @@ class Field:
 
 def execute_code(code, field):
     """Выполняет код и возвращает пошаговый результат."""
-    commands = parse_code(code, field)
+    commands = parse_code(code)
     result = []
-    stack = []  # Стек для циклов
+    loop_stack = []  # Стек для циклов
     pc = 0  # Счетчик команд
 
     while pc < len(commands):
@@ -68,22 +86,24 @@ def execute_code(code, field):
             # Начало цикла
             condition_met = check_condition(cmd['condition'], field)
             if condition_met:
-                stack.append(pc)  # Сохраняем позицию начала цикла
+                loop_stack.append(pc)  # Сохраняем позицию начала цикла
                 pc += 1
             else:
                 pc = cmd['end']  # Переходим к концу цикла
+
         elif cmd['type'] == 'end_loop':
             # Конец цикла
-            if not stack:
+            if not loop_stack:
                 raise Exception("Непарный конец цикла")
-            pc = stack.pop()  # Возвращаемся к началу цикла
+            pc = loop_stack.pop()  # Возвращаемся к началу цикла
+
         else:
             raise Exception(f"Неизвестная команда: {cmd['type']}")
 
     return result
 
 
-def parse_code(code, field):
+def parse_code(code):
     """Парсит код и возвращает список команд."""
     lines = code.lower().split('\n')
     commands = []
@@ -116,7 +136,7 @@ def parse_code(code, field):
             commands[start_idx]['end'] = len(commands)  # Указываем конец цикла
 
         elif line.startswith('вправо'):
-            commands.append({'type': 'move', 'dx': 1, 'dy': 0})
+            commands.append({'type': 'move', 'dx': 1, 'dy':     0})
         elif line.startswith('влево'):
             commands.append({'type': 'move', 'dx': -1, 'dy': 0})
         elif line.startswith('вверх'):
