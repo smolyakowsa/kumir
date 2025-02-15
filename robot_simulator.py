@@ -149,14 +149,25 @@ def parse_code(code):
 
 
 def parse_condition(cond_str):
-    """Парсит условие для цикла."""
+    """Парсит условия вида 'нц пока [направление] [не] свободно'"""
     cond_str = cond_str.strip().lower()
     parts = cond_str.split()
 
-    if len(parts) != 2:
-        raise Exception(f"Неверный формат условия: {cond_str}")
+    # Обрабатываем оба варианта:
+    # 1. "[направление] свободно"
+    # 2. "[направление] не свободно"
+    if len(parts) not in [2, 3]:
+        raise Exception(f"Неверный формат условия: '{cond_str}'. Используйте: '[направление] [не] свободно'")
 
-    direction, state = parts
+    # Определяем направление и флаг
+    direction = parts[0]
+    is_free = True
+
+    if len(parts) == 3:
+        if parts[1] != 'не':
+            raise Exception(f"Неверный формат отрицания. Ожидалось: '{direction} не свободно'")
+        is_free = False
+
     direction_map = {
         'справа': (1, 0),
         'слева': (-1, 0),
@@ -167,17 +178,13 @@ def parse_condition(cond_str):
     if direction not in direction_map:
         raise Exception(f"Неизвестное направление: {direction}")
 
-    if state not in ['свободно', 'занято']:
-        raise Exception(f"Неизвестное состояние: {state}")
-
     return {
         'direction': direction_map[direction],
-        'free': state == 'свободно'
+        'is_free': is_free
     }
 
 
 def check_condition(condition, field):
-    """Проверяет условие цикла."""
     dx, dy = condition['direction']
-    is_free = field.check_direction(dx, dy)
-    return is_free == condition['free']
+    actual_is_free = field.check_direction(dx, dy)
+    return actual_is_free == condition['is_free']
