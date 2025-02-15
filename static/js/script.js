@@ -10,11 +10,12 @@ async function fetchFieldState() {
 
 // Функция для обновления состояния поля на сервере
 async function updateField(data) {
+    console.log('Отправляемые стены:', Array.from(walls.values())); // Отладочная информация
     await fetch('/api/field', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            walls: Array.from(walls.values()), // Преобразуем Map в массив
+            walls: Array.from(walls.values()), // Преобразуем Map в массив объектов
             painted: data.painted || [],
             robot: data.robot || {x: 0, y: 0}
         })
@@ -43,18 +44,25 @@ function createWallElement(x, y, orientation) {
     wall.addEventListener('click', async (e) => {
         e.stopPropagation();
         const key = wallKey;
+        const newWalls = new Map(walls); // Создаем копию текущих стен
 
-        if (walls.has(key)) {
-            walls.delete(key);
+        if (newWalls.has(key)) {
+            newWalls.delete(key); // Удаляем стену
             wall.classList.remove('active');
         } else {
-            walls.set(key, {x, y, orientation});
+            newWalls.set(key, {x, y, orientation}); // Добавляем стену
             wall.classList.add('active');
         }
 
-        await updateField({ walls: Array.from(walls.values()) });
-        const state = await fetchFieldState();
-        renderField(state);
+        walls = newWalls; // Обновляем состояние стен
+
+        try {
+            await updateField({ walls: Array.from(walls.values()) }); // Отправляем обновленные стены на сервер
+            const state = await fetchFieldState(); // Получаем актуальное состояние с сервера
+            renderField(state); // Перерисовываем поле
+        } catch (error) {
+            console.error('Ошибка при обновлении стен:', error);
+        }
     });
 
     return wall;
@@ -72,6 +80,8 @@ function handleCellDoubleClick(x, y) {
 function renderField(state) {
     const field = document.getElementById('field');
     field.innerHTML = '';
+
+    console.log('Полученные стены с сервера:', state.walls); // Отладочная информация
 
     // Синхронизация стен
     walls.clear();

@@ -16,12 +16,15 @@ class Field:
     def update(self, data):
         if 'walls' in data:
             self.walls = set()
+            # Обрабатываем новый формат стен [x, y, orientation]
             for wall in data['walls']:
-                x, y, orientation = wall
+                x = wall['x']
+                y = wall['y']
+                orientation = wall['orientation']
                 if orientation == 'horizontal':
-                    self.walls.add((x, y, x + 1, y))  # Горизонтальная стена
+                    self.walls.add((x, y, x+1, y))  # Горизонтальная стена
                 elif orientation == 'vertical':
-                    self.walls.add((x, y, x, y + 1))  # Вертикальная стена
+                    self.walls.add((x, y, x, y+1))  # Вертикальная стена
 
         if 'robot' in data:
             new_x = data['robot'].get('x', 0)
