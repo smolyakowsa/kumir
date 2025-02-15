@@ -1,12 +1,11 @@
 class Field:
     def __init__(self):
         self.size = 10
-        self.robot = {'x': 0, 'y': 0}  # Начальная позиция робота
+        self.robot = {'x': 0, 'y': 0}
         self.walls = set()  # Множество стен в формате {(x1, y1, x2, y2)}
-        self.painted = set()  # Закрашенные клетки
+        self.painted = set()
 
     def get_state(self):
-        """Возвращает текущее состояние поля."""
         return {
             'robot': self.robot,
             'walls': list(self.walls),
@@ -15,27 +14,20 @@ class Field:
         }
 
     def update(self, data):
-        """Обновляет состояние поля."""
         if 'walls' in data:
             self.walls = set()
             for wall in data['walls']:
-                # Преобразуем формат стен из [x, y, orientation] в (x1, y1, x2, y2)
                 x, y, orientation = wall
                 if orientation == 'horizontal':
                     self.walls.add((x, y, x + 1, y))  # Горизонтальная стена
                 elif orientation == 'vertical':
                     self.walls.add((x, y, x, y + 1))  # Вертикальная стена
 
-        if 'painted' in data:
-            self.painted = set(tuple(p) for p in data['painted'])
-
         if 'robot' in data:
-            # Проверяем, что новые координаты робота допустимы
-            x = data['robot'].get('x', 0)
-            y = data['robot'].get('y', 0)
-            if not (0 <= x < self.size and 0 <= y < self.size):
-                raise ValueError("Недопустимые координаты робота")
-            self.robot.update(data['robot'])
+            new_x = data['robot'].get('x', 0)
+            new_y = data['robot'].get('y', 0)
+            if 0 <= new_x < self.size and 0 <= new_y < self.size:
+                self.robot.update(data['robot'])
 
     def is_cell_free(self, x, y):
         """Проверяет, свободна ли клетка (x, y)."""
@@ -45,7 +37,7 @@ class Field:
         # Проверяем, не пересекается ли клетка со стенами
         for wall in self.walls:
             x1, y1, x2, y2 = wall
-            if (x1 <= x <= x2 and y1 <= y <= y2) or (x2 <= x <= x1 and y2 <= y <= y1):
+            if (min(x1, x2) <= x <= max(x1, x2)) and (min(y1, y2) <= y <= max(y1, y2)):
                 return False  # Клетка занята стеной
         return True
 
@@ -65,6 +57,7 @@ def execute_code(code, field):
 
     while pc < len(commands):
         cmd = commands[pc]
+
         if cmd['type'] == 'move':
             # Движение робота
             new_x = field.robot['x'] + cmd['dx']
@@ -117,15 +110,16 @@ def parse_code(code):
         if line.startswith('нц пока'):
             # Обработка цикла "нц пока"
             condition_str = line[6:].strip()
-            condition = parse_condition(condition_str)
-            if condition is None:
-                raise Exception(f"Неизвестное условие: {condition_str}")
-            commands.append({
-                'type': 'loop',
-                'condition': condition,
-                'end': None  # Позиция конца цикла будет заполнена позже
-            })
-            loop_stack.append(len(commands) - 1)  # Сохраняем индекс начала цикла
+            try:
+                condition = parse_condition(condition_str)
+                commands.append({
+                    'type': 'loop',
+                    'condition': condition,
+                    'end': None  # Позиция конца цикла будет заполнена позже
+                })
+                loop_stack.append(len(commands) - 1)  # Сохраняем индекс начала цикла
+            except Exception as e:
+                raise Exception(f"Ошибка в условии цикла: {str(e)}")
 
         elif line.startswith('кц'):
             # Обработка конца цикла
@@ -136,7 +130,7 @@ def parse_code(code):
             commands[start_idx]['end'] = len(commands)  # Указываем конец цикла
 
         elif line.startswith('вправо'):
-            commands.append({'type': 'move', 'dx': 1, 'dy':     0})
+            commands.append({'type': 'move', 'dx': 1, 'dy': 0})
         elif line.startswith('влево'):
             commands.append({'type': 'move', 'dx': -1, 'dy': 0})
         elif line.startswith('вверх'):
@@ -151,18 +145,36 @@ def parse_code(code):
     return commands
 
 
-def parse_condition(condition_str):
+def parse_condition(cond_str):
     """Парсит условие для цикла."""
+    cond_str = cond_str.strip().lower()
+    parts = cond_str.split()
+
+    if len(parts) != 2:
+        raise Exception(f"Неверный формат условия: {cond_str}")
+
+    direction, state = parts
     direction_map = {
-        'справа свободно': (1, 0),
-        'слева свободно': (-1, 0),
-        'сверху свободно': (0, -1),
-        'снизу свободно': (0, 1)
+        'справа': (1, 0),
+        'слева': (-1, 0),
+        'сверху': (0, -1),
+        'снизу': (0, 1)
     }
-    return direction_map.get(condition_str, None)
+
+    if direction not in direction_map:
+        raise Exception(f"Неизвестное направление: {direction}")
+
+    if state not in ['свободно', 'занято']:
+        raise Exception(f"Неизвестное состояние: {state}")
+
+    return {
+        'direction': direction_map[direction],
+        'free': state == 'свободно'
+    }
 
 
 def check_condition(condition, field):
     """Проверяет условие цикла."""
-    dx, dy = condition
-    return field.check_direction(dx, dy)
+    dx, dy = condition['direction']
+    is_free = field.check_direction(dx, dy)
+    return is_free == condition['free']

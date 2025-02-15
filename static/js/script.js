@@ -1,6 +1,6 @@
 let isRunning = false;
-let walls = new Set();
-let animationDelay = 300; // Задержка анимации
+let walls = new Map(); // Используем Map для хранения стен
+let animationDelay = 300; // Задержка анимации (в миллисекундах)
 
 // Функция для получения текущего состояния поля
 async function fetchFieldState() {
@@ -14,47 +14,47 @@ async function updateField(data) {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-            walls: Array.from(walls).map(wall => {
-                const [x, y, orientation] = wall.split(',');
-                return [parseInt(x), parseInt(y), orientation];
-            }),
+            walls: Array.from(walls.values()), // Преобразуем Map в массив
             painted: data.painted || [],
-            robot: data.robot || {x: 0, y: 0, dir: 0}
+            robot: data.robot || {x: 0, y: 0}
         })
     });
 }
 
 // Создание элемента стены
 function createWallElement(x, y, orientation) {
+    const wallKey = `${x},${y},${orientation}`;
     const wall = document.createElement('div');
     wall.className = `wall ${orientation}-wall`;
-    wall.style.cssText = orientation === 'horizontal'
-        ? `left:${x * 10}%;top:${y * 10}%`
-        : `left:${x * 10}%;top:${y * 10}%`;
 
-    wall.dataset.x = x;
-    wall.dataset.y = y;
-    wall.dataset.orientation = orientation;
-
-    // Проверяем, есть ли стена в текущем состоянии
-    const key = `${x},${y},${orientation}`;
-    if (walls.has(key)) {
-        wall.style.background = '#666';
+    // Устанавливаем стили в зависимости от ориентации
+    if (orientation === 'horizontal') {
+        wall.style.cssText = `left:${x * 10}%; top:${y * 10}%; width:10%; height:2px`;
+    } else {
+        wall.style.cssText = `left:${x * 10}%; top:${y * 10}%; width:2px; height:10%`;
     }
 
+    // Проверяем, есть ли стена в текущем состоянии
+    if (walls.has(wallKey)) {
+        wall.classList.add('active');
+    }
+
+    // Обработчик клика для добавления/удаления стены
     wall.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const key = `${x},${y},${orientation}`;
-        const newWalls = new Set(walls);
-        if (newWalls.has(key)) {
-            newWalls.delete(key);
-            wall.style.background = 'transparent';
+        const key = wallKey;
+
+        if (walls.has(key)) {
+            walls.delete(key);
+            wall.classList.remove('active');
         } else {
-            newWalls.add(key);
-            wall.style.background = '#666';
+            walls.set(key, {x, y, orientation});
+            wall.classList.add('active');
         }
-        walls = newWalls;
-        await updateField({ walls: Array.from(walls) });
+
+        await updateField({ walls: Array.from(walls.values()) });
+        const state = await fetchFieldState();
+        renderField(state);
     });
 
     return wall;
@@ -64,8 +64,7 @@ function createWallElement(x, y, orientation) {
 function handleCellDoubleClick(x, y) {
     if (isRunning) return;
     updateField({
-        robot: { x: x, y: y, dir: 0 },
-        walls: Array.from(walls)
+        robot: { x: x, y: y }
     }).then(() => fetchFieldState()).then(renderField);
 }
 
@@ -73,29 +72,41 @@ function handleCellDoubleClick(x, y) {
 function renderField(state) {
     const field = document.getElementById('field');
     field.innerHTML = '';
-    walls = new Set(state.walls);
 
-    // Создаем клетки
+    // Синхронизация стен
+    walls.clear();
+    state.walls.forEach(wall => {
+        const [x1, y1, x2, y2] = wall;
+        const orientation = y1 === y2 ? 'horizontal' : 'vertical';
+        const key = `${x1},${y1},${orientation}`;
+        walls.set(key, {x: x1, y: y1, orientation});
+    });
+
+    // Отрисовка клеток
     for (let y = 0; y < state.size; y++) {
         for (let x = 0; x < state.size; x++) {
             const cell = document.createElement('div');
             cell.className = 'cell';
-            cell.style.cssText = `left:${x * 10}%;top:${y * 10}%`;
+            cell.style.cssText = `left:${x * 10}%; top:${y * 10}%`;
 
             // Обработчик двойного клика
             cell.addEventListener('dblclick', () => handleCellDoubleClick(x, y));
 
+            // Проверка позиции робота
             if (x === state.robot.x && y === state.robot.y) {
                 cell.classList.add('robot');
             }
+
+            // Проверка закрашенных клеток
             if (state.painted.some(p => p[0] === x && p[1] === y)) {
                 cell.classList.add('painted');
             }
+
             field.appendChild(cell);
         }
     }
 
-    // Создаем стены
+    // Отрисовка стен
     for (let y = 0; y <= state.size; y++) {
         for (let x = 0; x < state.size; x++) {
             field.appendChild(createWallElement(x, y, 'horizontal'));
@@ -115,12 +126,9 @@ async function runCode() {
     isRunning = true;
 
     try {
-        // Сброс состояния
-        await updateField({
-            robot: { x: 0, y: 0, dir: 0 },
-            painted: [],
-            walls: Array.from(walls)
-        });
+        // Получаем актуальное состояние робота
+        const state = await fetchFieldState();
+        await updateField({ robot: state.robot });
 
         const code = document.getElementById('code').value;
         const response = await fetch('/api/run', {
@@ -134,14 +142,9 @@ async function runCode() {
 
         // Пошаговое выполнение
         for (const step of result) {
-            // Обновляем только позицию робота на сервере
             await updateField({ robot: { x: step.x, y: step.y } });
-
-            // Получаем актуальное состояние
             const state = await fetchFieldState();
             renderField(state);
-
-            // Задержка для анимации
             await new Promise(resolve => setTimeout(resolve, animationDelay));
         }
     } catch (error) {
@@ -161,10 +164,12 @@ document.querySelector('.controls').addEventListener('click', e => {
         updateField({
             walls: [],
             painted: [],
-            robot: { x: 0, y: 0, dir: 0 }
+            robot: { x: 0, y: 0 }
         });
     }
 });
 
-// Инициализация
-fetchFieldState().then(renderField);
+// Инициализация при загрузке
+window.addEventListener('load', () => {
+    fetchFieldState().then(renderField);
+});
