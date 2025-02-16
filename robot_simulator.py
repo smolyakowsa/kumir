@@ -61,7 +61,6 @@ def execute_code(code, field):
 
     while pc < len(commands):
         cmd = commands[pc]
-        print(f"Выполнение команды: {cmd}")  # Логирование текущей команды
 
         if cmd['type'] == 'move':
             new_x = field.robot['x'] + cmd['dx']
@@ -71,12 +70,10 @@ def execute_code(code, field):
             field.robot['x'] = new_x
             field.robot['y'] = new_y
             result.append({'action': 'move', 'x': new_x, 'y': new_y})
-            pc += 1
 
         elif cmd['type'] == 'paint':
             field.painted.add((field.robot['x'], field.robot['y']))
             result.append({'action': 'paint', 'x': field.robot['x'], 'y': field.robot['y']})
-            pc += 1
 
         elif cmd['type'] == 'loop':
             condition_met = check_condition(cmd['condition'], field)
@@ -86,8 +83,6 @@ def execute_code(code, field):
                 loop_stack.append(pc)  # Сохраняем позицию начала цикла
                 pc += 1  # Переходим к следующей команде
             else:
-                if cmd['end'] is None:
-                    raise Exception("Ошибка в структуре цикла: отсутствует конец цикла")
                 pc = cmd['end']  # Пропускаем цикл, если условие ложно
 
         elif cmd['type'] == 'end_loop':
@@ -103,50 +98,48 @@ def execute_code(code, field):
             print(f"Повторная проверка условия цикла: {condition_met}")
 
             if condition_met:
-                # Возвращаемся к началу цикла
-                pc = start_idx
+                # Возвращаемся к началу тела цикла (после команды loop)
+                pc = start_idx + 1
             else:
                 # Выходим из цикла
                 pc = loop_cmd['end']
                 loop_stack.pop()  # Удаляем позицию цикла из стека
 
-        else:
-            raise Exception(f"Неизвестная команда: {cmd['type']}")
+        # Сохраняем текущее состояние робота после каждой команды
+        result.append({'action': 'step', 'x': field.robot['x'], 'y': field.robot['y']})
+        pc += 1  # Переходим к следующей команде вне зависимости от типа команды
 
     return result
 
 
 def parse_code(code):
-    lines = [line.strip() for line in code.lower().split('\n') if line.strip()]  # Удаляем пустые строки
+    lines = [line.strip() for line in code.lower().split('\n') if line.strip()]
     commands = []
     loop_stack = []
 
     for line in lines:
         if line.startswith('нц пока'):
-            # Используем регулярное выражение для точного разделения строки
             match = re.match(r'^нц пока\s+(.+)', line)
             if not match:
                 raise Exception("Неверный формат цикла 'нц пока'")
 
-            condition_str = match.group(1).strip()  # Берем только условие
+            condition_str = match.group(1).strip()
             try:
                 condition = parse_condition(condition_str)
                 commands.append({
                     'type': 'loop',
                     'condition': condition,
-                    'end': None  # Конец цикла будет установлен позже
+                    'end': None
                 })
-                loop_stack.append(len(commands) - 1)  # Сохраняем индекс начала цикла
+                loop_stack.append(len(commands) - 1)
             except Exception as e:
                 raise Exception(f"Ошибка в условии цикла: {str(e)}")
 
         elif line.startswith('кц'):
             if not loop_stack:
                 raise Exception("Непарный конец цикла")
-            start_idx = loop_stack.pop()  # Получаем индекс начала цикла
-            if start_idx >= len(commands):
-                raise Exception("Ошибка в структуре цикла: недопустимый индекс начала цикла")
-            commands[start_idx]['end'] = len(commands)  # Устанавливаем конец цикла
+            start_idx = loop_stack.pop()
+            commands[start_idx]['end'] = len(commands)
             commands.append({'type': 'end_loop'})
 
         elif line.startswith('вправо'):
@@ -167,7 +160,6 @@ def parse_code(code):
         else:
             raise Exception(f"Неизвестная команда: {line}")
 
-    # Проверяем, что все циклы закрыты
     if loop_stack:
         raise Exception("Не все циклы закрыты")
 
@@ -175,9 +167,8 @@ def parse_code(code):
 
 
 def parse_condition(cond_str):
-    # Очищаем строку от нежелательных символов
     cond_str = ''.join(c for c in cond_str.strip().lower() if c.isalpha() or c.isspace())
-    cond_str = unicodedata.normalize('NFKC', cond_str)  # Нормализуем строку
+    cond_str = unicodedata.normalize('NFKC', cond_str)
     parts = [p for p in cond_str.split() if p]
 
     if len(parts) < 2 or len(parts) > 3:
