@@ -149,38 +149,43 @@ def parse_code(code):
 
 
 def parse_condition(cond_str):
-    """Парсит условия вида 'нц пока [направление] [не] свободно'"""
-    cond_str = cond_str.strip().lower()
-    parts = cond_str.split()
+    """Парсит условия вида:
+    - '[направление] свободно'
+    - '[направление] не свободно'
+    """
+    # Удаляем все невидимые символы и лишние пробелы
+    cond_str = "".join(c for c in cond_str.strip().lower() if c.isalpha() or c.isspace())
+    parts = [p for p in cond_str.split() if p]  # Удаляем пустые элементы
 
-    # Обрабатываем оба варианта:
-    # 1. "[направление] свободно"
-    # 2. "[направление] не свободно"
-    if len(parts) not in [2, 3]:
-        raise Exception(f"Неверный формат условия: '{cond_str}'. Используйте: '[направление] [не] свободно'")
+    if len(parts) < 2 or len(parts) > 3:
+        raise Exception(f"Неверный формат: '{cond_str}'. Пример: 'справа свободно' или 'слева не свободно'")
 
     # Определяем направление и флаг
     direction = parts[0]
     is_free = True
 
+    # Обрабатываем отрицание
     if len(parts) == 3:
-        if parts[1] != 'не':
-            raise Exception(f"Неверный формат отрицания. Ожидалось: '{direction} не свободно'")
+        if parts[1] != "не" or parts[2] != "свободно":
+            raise Exception(f"Ожидалось: '[направление] не свободно'. Получено: '{cond_str}'")
         is_free = False
+    else:
+        if parts[1] != "свободно":
+            raise Exception(f"Ожидалось: '[направление] свободно'. Получено: '{cond_str}'")
 
     direction_map = {
-        'справа': (1, 0),
-        'слева': (-1, 0),
-        'сверху': (0, -1),
-        'снизу': (0, 1)
+        "справа": (1, 0),
+        "слева": (-1, 0),
+        "сверху": (0, -1),
+        "снизу": (0, 1)
     }
 
     if direction not in direction_map:
-        raise Exception(f"Неизвестное направление: {direction}")
+        raise Exception(f"Неизвестное направление: '{direction}'. Допустимые: справа, слева, сверху, снизу")
 
     return {
-        'direction': direction_map[direction],
-        'is_free': is_free
+        "direction": direction_map[direction],
+        "is_free": is_free
     }
 
 
