@@ -1,23 +1,32 @@
 let isRunning = false;
 let walls = new Map(); // Используем Map для хранения стен
-let animationDelay = 300; // Задержка анимации (в миллисекундах)
+let animationDelay = 500; // Задержка анимации (в миллисекундах)
+
+// Функция для очистки строки от нежелательных символов
+function cleanString(str) {
+    str = str.replace(/[^\w\s]/g, ''); // Удаляем все символы, кроме букв, цифр и пробелов
+    str = str.trim(); // Удаляем лишние пробелы
+    return str;
+}
 
 // Функция для получения текущего состояния поля
 async function fetchFieldState() {
     const response = await fetch('/api/field');
-    return await response.json();
+    const state = await response.json();
+    console.log("Текущее состояние поля:", state); // Логирование состояния
+    return state;
 }
 
 // Функция для обновления состояния поля на сервере
 async function updateField(data) {
-    console.log('Отправляемые стены:', Array.from(walls.values())); // Отладочная информация
+    console.log('Отправляемые данные:', data); // Отладочная информация
     await fetch('/api/field', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             walls: Array.from(walls.values()), // Преобразуем Map в массив объектов
             painted: data.painted || [],
-            robot: data.robot || {x: 0, y: 0}
+            robot: data.robot || { x: 0, y: 0 }
         })
     });
 }
@@ -27,44 +36,34 @@ function createWallElement(x, y, orientation) {
     const wallKey = `${x},${y},${orientation}`;
     const wall = document.createElement('div');
     wall.className = `wall ${orientation}-wall`;
-
-    // Устанавливаем стили в зависимости от ориентации
     if (orientation === 'horizontal') {
         wall.style.cssText = `left:${x * 10}%; top:${y * 10}%; width:10%; height:2px`;
     } else {
         wall.style.cssText = `left:${x * 10}%; top:${y * 10}%; width:2px; height:10%`;
     }
-
-    // Проверяем, есть ли стена в текущем состоянии
     if (walls.has(wallKey)) {
         wall.classList.add('active');
     }
-
-    // Обработчик клика для добавления/удаления стены
     wall.addEventListener('click', async (e) => {
         e.stopPropagation();
         const key = wallKey;
-        const newWalls = new Map(walls); // Создаем копию текущих стен
-
+        const newWalls = new Map(walls);
         if (newWalls.has(key)) {
-            newWalls.delete(key); // Удаляем стену
+            newWalls.delete(key);
             wall.classList.remove('active');
         } else {
-            newWalls.set(key, {x, y, orientation}); // Добавляем стену
+            newWalls.set(key, { x, y, orientation });
             wall.classList.add('active');
         }
-
-        walls = newWalls; // Обновляем состояние стен
-
+        walls = newWalls;
         try {
-            await updateField({ walls: Array.from(walls.values()) }); // Отправляем обновленные стены на сервер
-            const state = await fetchFieldState(); // Получаем актуальное состояние с сервера
-            renderField(state); // Перерисовываем поле
+            await updateField({ walls: Array.from(walls.values()) });
+            const state = await fetchFieldState();
+            renderField(state);
         } catch (error) {
             console.error('Ошибка при обновлении стен:', error);
         }
     });
-
     return wall;
 }
 
@@ -80,49 +79,33 @@ function handleCellDoubleClick(x, y) {
 function renderField(state) {
     const field = document.getElementById('field');
     field.innerHTML = '';
-
-    console.log('Полученные стены с сервера:', state.walls); // Отладочная информация
-
-    // Синхронизация стен
     walls.clear();
     state.walls.forEach(wall => {
         const [x1, y1, x2, y2] = wall;
         const orientation = y1 === y2 ? 'horizontal' : 'vertical';
         const key = `${x1},${y1},${orientation}`;
-        walls.set(key, {x: x1, y: y1, orientation});
+        walls.set(key, { x: x1, y: y1, orientation });
     });
-
-    // Отрисовка клеток
     for (let y = 0; y < state.size; y++) {
         for (let x = 0; x < state.size; x++) {
             const cell = document.createElement('div');
             cell.className = 'cell';
             cell.style.cssText = `left:${x * 10}%; top:${y * 10}%`;
-
-            // Обработчик двойного клика
             cell.addEventListener('dblclick', () => handleCellDoubleClick(x, y));
-
-            // Проверка позиции робота
             if (x === state.robot.x && y === state.robot.y) {
                 cell.classList.add('robot');
             }
-
-            // Проверка закрашенных клеток
             if (state.painted.some(p => p[0] === x && p[1] === y)) {
                 cell.classList.add('painted');
             }
-
             field.appendChild(cell);
         }
     }
-
-    // Отрисовка стен
     for (let y = 0; y <= state.size; y++) {
         for (let x = 0; x < state.size; x++) {
             field.appendChild(createWallElement(x, y, 'horizontal'));
         }
     }
-
     for (let y = 0; y < state.size; y++) {
         for (let x = 0; x <= state.size; x++) {
             field.appendChild(createWallElement(x, y, 'vertical'));
@@ -131,26 +114,39 @@ function renderField(state) {
 }
 
 // Запуск кода с пошаговым выполнением
+// Запуск кода с пошаговым выполнением
 async function runCode() {
     if (isRunning) return;
     isRunning = true;
 
     try {
-        // Получаем актуальное состояние робота
         const state = await fetchFieldState();
-        await updateField({ robot: state.robot });
 
-        const code = document.getElementById('code').value;
+        // Берем код напрямую из <textarea>
+        const codeElement = document.getElementById('code');
+        let code = codeElement.value.trim(); // Удаляем пробелы в начале и конце
+
+        // Логирование отправляемого кода
+        console.log("Отправленный код:", code);
+
+        // Отправляем код на сервер
         const response = await fetch('/api/run', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ code })
         });
 
         const result = await response.json();
-        if (result.error) throw result.error;
 
-        // Пошаговое выполнение
+        if (result.error) throw new Error(result.error);
+
+        console.log("Шаги выполнения от сервера:", result);
+
+        if (!Array.isArray(result) || result.length === 0) {
+            alert("Алгоритм не содержит действий.");
+            return;
+        }
+
         for (const step of result) {
             await updateField({ robot: { x: step.x, y: step.y } });
             const state = await fetchFieldState();
@@ -158,10 +154,10 @@ async function runCode() {
             await new Promise(resolve => setTimeout(resolve, animationDelay));
         }
     } catch (error) {
-        alert(`Ошибка: ${error}`);
+        alert(`Ошибка: ${error.message}`);
+    } finally {
+        isRunning = false;
     }
-
-    isRunning = false;
 }
 
 // Обработчики кнопок
