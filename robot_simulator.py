@@ -86,14 +86,16 @@ def execute_code(code, field):
                 loop_stack.append(pc)  # Сохраняем позицию начала цикла
                 pc += 1  # Переходим к следующей команде
             else:
+                if cmd['end'] is None:
+                    raise Exception("Ошибка в структуре цикла: отсутствует конец цикла")
                 pc = cmd['end']  # Пропускаем цикл, если условие ложно
 
         elif cmd['type'] == 'end_loop':
             if not loop_stack:
                 raise Exception("Непарный конец цикла")
 
-            # Проверяем условие перед повторным входом в цикл
-            start_idx = loop_stack[-1]  # Получаем начало текущего цикла
+            # Получаем начало текущего цикла
+            start_idx = loop_stack[-1]
             loop_cmd = commands[start_idx]
 
             # Проверяем условие заново
@@ -101,9 +103,11 @@ def execute_code(code, field):
             print(f"Повторная проверка условия цикла: {condition_met}")
 
             if condition_met:
-                pc = loop_stack[-1] + 1  # Возвращаемся к началу цикла
+                # Возвращаемся к началу цикла
+                pc = start_idx
             else:
-                pc = cmd['end']  # Выходим из цикла
+                # Выходим из цикла
+                pc = loop_cmd['end']
                 loop_stack.pop()  # Удаляем позицию цикла из стека
 
         else:
@@ -130,18 +134,20 @@ def parse_code(code):
                 commands.append({
                     'type': 'loop',
                     'condition': condition,
-                    'end': None
+                    'end': None  # Конец цикла будет установлен позже
                 })
-                loop_stack.append(len(commands) - 1)
+                loop_stack.append(len(commands) - 1)  # Сохраняем индекс начала цикла
             except Exception as e:
                 raise Exception(f"Ошибка в условии цикла: {str(e)}")
 
         elif line.startswith('кц'):
             if not loop_stack:
                 raise Exception("Непарный конец цикла")
-            start_idx = loop_stack.pop()
+            start_idx = loop_stack.pop()  # Получаем индекс начала цикла
+            if start_idx >= len(commands):
+                raise Exception("Ошибка в структуре цикла: недопустимый индекс начала цикла")
+            commands[start_idx]['end'] = len(commands)  # Устанавливаем конец цикла
             commands.append({'type': 'end_loop'})
-            commands[start_idx]['end'] = len(commands)
 
         elif line.startswith('вправо'):
             commands.append({'type': 'move', 'dx': 1, 'dy': 0})
@@ -160,6 +166,10 @@ def parse_code(code):
 
         else:
             raise Exception(f"Неизвестная команда: {line}")
+
+    # Проверяем, что все циклы закрыты
+    if loop_stack:
+        raise Exception("Не все циклы закрыты")
 
     return commands
 
