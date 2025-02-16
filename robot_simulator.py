@@ -1,4 +1,6 @@
+import re
 import unicodedata
+
 
 class Field:
     def __init__(self):
@@ -79,28 +81,35 @@ def execute_code(code, field):
         elif cmd['type'] == 'loop':
             condition_met = check_condition(cmd['condition'], field)
             print(f"Проверка условия цикла: {condition_met}")  # Логирование результата условия
+
             if condition_met:
-                loop_stack.append(pc)
-                pc += 1
+                loop_stack.append(pc)  # Сохраняем позицию начала цикла
+                pc += 1  # Переходим к следующей команде
             else:
-                pc = cmd['end']
+                pc = cmd['end']  # Пропускаем цикл, если условие ложно
 
         elif cmd['type'] == 'end_loop':
             if not loop_stack:
                 raise Exception("Непарный конец цикла")
-            pc = loop_stack.pop()
+
+            # Проверяем условие перед повторным входом в цикл
+            start_idx = loop_stack[-1]  # Получаем начало текущего цикла
+            loop_cmd = commands[start_idx]
+
+            # Проверяем условие заново
+            condition_met = check_condition(loop_cmd['condition'], field)
+            print(f"Повторная проверка условия цикла: {condition_met}")
+
+            if condition_met:
+                pc = loop_stack[-1] + 1  # Возвращаемся к началу цикла
+            else:
+                pc = cmd['end']  # Выходим из цикла
+                loop_stack.pop()  # Удаляем позицию цикла из стека
 
         else:
             raise Exception(f"Неизвестная команда: {cmd['type']}")
 
-    # Если результат пустой, добавляем дефолтное действие
-    if not result:
-        result.append({'action': 'move', 'x': field.robot['x'], 'y': field.robot['y']})
-
     return result
-
-
-import re
 
 
 def parse_code(code):
@@ -154,10 +163,6 @@ def parse_code(code):
 
     return commands
 
-
-import unicodedata
-
-import unicodedata
 
 def parse_condition(cond_str):
     # Очищаем строку от нежелательных символов
